@@ -1,0 +1,260 @@
+{
+  "rendererDefaults": {
+    "pitch": 0.55,
+    "spacing": 0.8,
+    "defaultAngleDeg": 60,
+    "defaultZoom": 6
+  },
+  "assets": {
+    "villager_mina": {
+      "file": "villager_mina.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_junho": {
+      "file": "villager_junho.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_seoyeon": {
+      "file": "villager_seoyeon.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_doyun": {
+      "file": "villager_doyun.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_haneul": {
+      "file": "villager_haneul.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "tree_oak_mature": {
+      "file": "tree_oak_mature.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "slices": 32,
+      "footprintTiles": [
+        2,
+        2
+      ]
+    },
+    "tree_pine_mature": {
+      "file": "tree_pine_mature.png",
+      "frameWidth": 22,
+      "frameHeight": 22,
+      "slices": 34,
+      "footprintTiles": [
+        2,
+        2
+      ]
+    },
+    "tree_young": {
+      "file": "tree_young.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 22,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "tree_sapling": {
+      "file": "tree_sapling.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "tree_stump": {
+      "file": "tree_stump.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 10,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_bare": {
+      "file": "plot_bare.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 6,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_tilled": {
+      "file": "plot_tilled.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 6,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_planted": {
+      "file": "plot_planted.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 8,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_growing": {
+      "file": "plot_growing.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 12,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_mature_turnip": {
+      "file": "plot_mature_turnip.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 16,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "plot_mature_wheat": {
+      "file": "plot_mature_wheat.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 18,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "berry_bush_full": {
+      "file": "berry_bush_full.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "berry_bush_empty": {
+      "file": "berry_bush_empty.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "hearth": {
+      "file": "hearth.png",
+      "frameWidth": 18,
+      "frameHeight": 18,
+      "slices": 18,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "chest": {
+      "file": "chest.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "bed": {
+      "file": "bed.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "notice_board": {
+      "file": "notice_board.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "trading_stall": {
+      "file": "trading_stall.png",
+      "frameWidth": 24,
+      "frameHeight": 24,
+      "slices": 26,
+      "footprintTiles": [
+        2,
+        1
+      ]
+    },
+    "well": {
+      "file": "well.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 26,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "cottage": {
+      "file": "cottage.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "slices": 34,
+      "footprintTiles": [
+        4,
+        4
+      ]
+    }
+  }
+}

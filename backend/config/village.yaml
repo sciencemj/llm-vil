@@ -1,0 +1,277 @@
+# 은빛골 (Eunbit Valley) — Phase 1 demo village.
+# Coordinates are tile (x, y); x grows east, y grows south. Grid is 32 x 24.
+name: 은빛골
+language: ko
+seed: 42
+width: 32
+height: 24
+ticks_per_day: 1440          # 1 tick = 1 sim minute
+start_minute: 300            # 05:00 on day 0, everyone still asleep
+perception_radius: 6
+
+clock:
+  sim_minutes_per_real_second: 2.0
+  t_max_seconds: 3.0
+
+needs:
+  hunger_per_min_awake: 0.045
+  hunger_per_min_asleep: 0.015
+  stamina_sleep_per_min: 0.25
+  stamina_rest_per_min: 0.2
+  hungry_threshold: 50
+  tired_threshold: 25
+  slow_hunger: 85            # at/above: work and walking take twice as long
+
+economy:
+  forest_reserve: 3          # chopping refused when mature trees <= reserve
+  orders_per_day: 2
+  order_templates:
+    - {item: wood, min_qty: 2, max_qty: 4, reward_per_unit: 4}
+    - {item: turnip, min_qty: 1, max_qty: 3, reward_per_unit: 5}
+    - {item: berry, min_qty: 2, max_qty: 4, reward_per_unit: 2}
+    - {item: wheat, min_qty: 1, max_qty: 2, reward_per_unit: 6}
+  order_lifetime_days: 2
+  merchant_every_days: 3
+  merchant_open_minute: 480
+  merchant_close_minute: 1080
+  weather_weights: {sunny: 0.5, overcast: 0.25, rain: 0.25}
+
+memory:
+  hot_days: 3
+  salient_importance: 7
+  reflection_threshold: 120
+  perception_cooldown: 60
+  retrieve_k: 6
+
+conversation:
+  max_turns: 6
+  ticks_per_turn: 2
+
+items:
+  coins: {}
+  wood: {sell: 2}
+  berry: {food: 10, sell: 1}
+  turnip: {food: 25, sell: 3}
+  wheat: {sell: 4}
+  turnip_seed: {buy: 2}
+  wheat_seed: {buy: 3}
+  berry_stew: {food: 55, stamina: 10}
+  turnip_soup: {food: 60, stamina: 10}
+  bread: {food: 45, buy: 6}
+
+crops:
+  turnip: {seed: turnip_seed, days: 2, yield_qty: 3, seed_min: 1, seed_max: 2}
+  wheat: {seed: wheat_seed, days: 3, yield_qty: 3, seed_min: 1, seed_max: 2}
+
+recipes:
+  berry_stew: {inputs: {berry: 3}, fuel: {wood: 1}, output: berry_stew}
+  turnip_soup: {inputs: {turnip: 2}, fuel: {wood: 1}, output: turnip_soup}
+  bread: {inputs: {wheat: 2}, fuel: {wood: 1}, output: bread}
+
+# Data-driven object affordances. Effects with special data (crops, chests, orders,
+# trades, recipes) are resolved by the world from the sections above.
+kinds:
+  tree:
+    initial_state: mature
+    opaque: true
+    growth: {stages: [stump, sapling, young, mature], days: [1, 1, 2, 0]}
+    affordances:
+      chop: {from_states: [mature], to_state: stump, stamina_cost: 8, duration: 20,
+             yields: {wood: 3}, yields_bonus: {wood: 1}}
+  farm_plot:
+    initial_state: untilled
+    blocking: false
+    affordances:
+      till: {from_states: [untilled], to_state: tilled, stamina_cost: 4, duration: 10}
+      plant: {from_states: [tilled], to_state: planted, stamina_cost: 1, duration: 5}
+      water: {from_states: [planted], to_state: watered, stamina_cost: 1, duration: 4}
+      harvest: {from_states: [ready], to_state: tilled, stamina_cost: 2, duration: 6}
+  berry_bush:
+    initial_state: ripe
+    growth: {stages: [empty, ripe], days: [2, 0]}   # wild bushes always regrow
+    affordances:
+      forage: {from_states: [ripe], to_state: empty, stamina_cost: 2, duration: 8,
+               yields: {berry: 3}, yields_bonus: {berry: 2}}
+  hearth:
+    initial_state: idle
+    affordances:
+      cook: {stamina_cost: 1, duration: 25}
+  bed:
+    initial_state: made
+    affordances:
+      sleep: {duration: 1}
+  chest:
+    initial_state: closed
+    affordances:
+      store: {duration: 2}
+      take: {duration: 2}
+  notice_board:
+    initial_state: posted
+    affordances:
+      fulfill_order: {duration: 3}
+  trading_stall:
+    initial_state: idle          # merchant_open while the traveling merchant is in town
+    affordances:
+      trade: {duration: 4}
+  well:
+    initial_state: idle
+    affordances: {}
+
+water:                        # impassable pond tiles [x, y, w, h]
+  - [22, 13, 5, 4]
+
+areas:
+  - {id: forest, name: 북쪽 숲, rect: [1, 0, 30, 7]}
+  - {id: farm, name: 마을 밭, rect: [5, 12, 7, 4]}
+  - {id: plaza, name: 마을 광장, rect: [12, 17, 9, 6]}
+  - {id: pond, name: 연못가, rect: [20, 12, 8, 6]}
+  - {id: kitchen, name: 공동 부엌, rect: [12, 12, 4, 3]}
+  - {id: home_mina, name: 민아네 오두막, rect: [3, 7, 4, 4]}
+  - {id: home_junho, name: 준호네 오두막, rect: [8, 7, 4, 4]}
+  - {id: home_seoyeon, name: 서연네 오두막, rect: [13, 7, 4, 4]}
+  - {id: home_doyun, name: 도윤네 오두막, rect: [18, 7, 4, 4]}
+  - {id: home_haneul, name: 하늘네 오두막, rect: [23, 7, 4, 4]}
+
+objects:
+  # North forest (14 trees)
+  - {id: tree_01, kind: tree, pos: [3, 2]}
+  - {id: tree_02, kind: tree, pos: [6, 1]}
+  - {id: tree_03, kind: tree, pos: [9, 3]}
+  - {id: tree_04, kind: tree, pos: [12, 2]}
+  - {id: tree_05, kind: tree, pos: [15, 1]}
+  - {id: tree_06, kind: tree, pos: [18, 3]}
+  - {id: tree_07, kind: tree, pos: [21, 2]}
+  - {id: tree_08, kind: tree, pos: [24, 1]}
+  - {id: tree_09, kind: tree, pos: [27, 3]}
+  - {id: tree_10, kind: tree, pos: [4, 5]}
+  - {id: tree_11, kind: tree, pos: [10, 5]}
+  - {id: tree_12, kind: tree, pos: [16, 5]}
+  - {id: tree_13, kind: tree, pos: [22, 5]}
+  - {id: tree_14, kind: tree, pos: [28, 5]}
+  # Wild berry bushes
+  - {id: bush_nw, kind: berry_bush, pos: [1, 9], name: 서쪽 산딸기}
+  - {id: bush_ne, kind: berry_bush, pos: [30, 9], name: 동쪽 산딸기}
+  - {id: bush_sw, kind: berry_bush, pos: [1, 16], name: 남서 산딸기}
+  - {id: bush_se, kind: berry_bush, pos: [30, 18], name: 남동 산딸기}
+  # Cottages: bed + personal chest
+  - {id: bed_mina, kind: bed, pos: [4, 8], owner: mina}
+  - {id: chest_mina, kind: chest, pos: [5, 8], owner: mina, data: {items: {berry: 2}}}
+  - {id: bed_junho, kind: bed, pos: [9, 8], owner: junho}
+  - {id: chest_junho, kind: chest, pos: [10, 8], owner: junho, data: {items: {wood: 2}}}
+  - {id: bed_seoyeon, kind: bed, pos: [14, 8], owner: seoyeon}
+  - {id: chest_seoyeon, kind: chest, pos: [15, 8], owner: seoyeon, data: {items: {turnip: 2}}}
+  - {id: bed_doyun, kind: bed, pos: [19, 8], owner: doyun}
+  - {id: chest_doyun, kind: chest, pos: [20, 8], owner: doyun, data: {items: {coins: 5}}}
+  - {id: bed_haneul, kind: bed, pos: [24, 8], owner: haneul}
+  - {id: chest_haneul, kind: chest, pos: [25, 8], owner: haneul, data: {items: {berry: 3}}}
+  # Farm (10 plots)
+  - {id: plot_01, kind: farm_plot, pos: [6, 13], owner: mina}
+  - {id: plot_02, kind: farm_plot, pos: [7, 13], owner: mina}
+  - {id: plot_03, kind: farm_plot, pos: [8, 13], owner: junho}
+  - {id: plot_04, kind: farm_plot, pos: [9, 13], owner: junho}
+  - {id: plot_05, kind: farm_plot, pos: [10, 13], owner: seoyeon}
+  - {id: plot_06, kind: farm_plot, pos: [6, 14], owner: seoyeon}
+  - {id: plot_07, kind: farm_plot, pos: [7, 14], owner: doyun}
+  - {id: plot_08, kind: farm_plot, pos: [8, 14], owner: doyun}
+  - {id: plot_09, kind: farm_plot, pos: [9, 14], owner: haneul}
+  - {id: plot_10, kind: farm_plot, pos: [10, 14], owner: haneul}
+  # Shared kitchen
+  - {id: chest_shared, kind: chest, pos: [13, 13], owner: shared, name: 공동 창고,
+     data: {items: {berry: 4, turnip: 2}}}
+  - {id: hearth_main, kind: hearth, pos: [14, 13], name: 공동 화덕}
+  # Pond & plaza
+  - {id: well_main, kind: well, pos: [21, 14], name: 우물}
+  - {id: board_main, kind: notice_board, pos: [14, 19], name: 마을 게시판}
+  - {id: stall_main, kind: trading_stall, pos: [17, 19], name: 장터 좌판}
+
+villagers:
+  - id: mina
+    name: 민아
+    age: 27
+    occupation: 농부
+    traits: [부지런함, 다정함, 계획적]
+    persona: 해 뜨기 전에 밭을 살피는 성실한 농부. 이웃에게 수확물을 나누는 걸 좋아한다.
+    wake_minute: 330
+    sleep_minute: 1260
+    home_area: home_mina
+    bed_id: bed_mina
+    chest_id: chest_mina
+    plots: [plot_01, plot_02]
+    start_pos: [4, 9]
+    inventory: {turnip_seed: 4, berry: 3, coins: 10}
+    work_bias: {farm: 0.6, wood: 0.15, forage: 0.25}
+    generosity: 0.8
+    impulsiveness: 0.05
+    sociability: 0.6
+  - id: junho
+    name: 준호
+    age: 31
+    occupation: 나무꾼
+    traits: [묵묵함, 힘셈, 의리]
+    persona: 말수는 적지만 마을의 장작을 책임지는 듬직한 나무꾼.
+    wake_minute: 345
+    sleep_minute: 1290
+    home_area: home_junho
+    bed_id: bed_junho
+    chest_id: chest_junho
+    plots: [plot_03, plot_04]
+    start_pos: [9, 9]
+    inventory: {turnip_seed: 2, wood: 2, berry: 3, coins: 8}
+    work_bias: {farm: 0.25, wood: 0.6, forage: 0.15}
+    generosity: 0.5
+    impulsiveness: 0.1
+    sociability: 0.35
+  - id: seoyeon
+    name: 서연
+    age: 24
+    occupation: 요리사
+    traits: [호기심, 수다스러움, 섬세함]
+    persona: 공동 화덕에서 스튜를 끓이며 마을 소식을 모으는 요리사.
+    wake_minute: 360
+    sleep_minute: 1275
+    home_area: home_seoyeon
+    bed_id: bed_seoyeon
+    chest_id: chest_seoyeon
+    plots: [plot_05, plot_06]
+    start_pos: [14, 9]
+    inventory: {turnip_seed: 2, wheat_seed: 2, turnip: 2, berry: 3, coins: 10}
+    work_bias: {farm: 0.4, wood: 0.1, forage: 0.5}
+    generosity: 0.7
+    impulsiveness: 0.1
+    sociability: 0.9
+  - id: doyun
+    name: 도윤
+    age: 29
+    occupation: 상인 지망생
+    traits: [영리함, 충동적, 야심]
+    persona: 장터에서 한몫 잡을 날을 꿈꾸는 꾀 많은 청년. 가끔 선을 넘는다.
+    wake_minute: 375
+    sleep_minute: 1305
+    home_area: home_doyun
+    bed_id: bed_doyun
+    chest_id: chest_doyun
+    plots: [plot_07, plot_08]
+    start_pos: [19, 9]
+    inventory: {turnip_seed: 2, wheat_seed: 2, berry: 2, coins: 15}
+    work_bias: {farm: 0.35, wood: 0.35, forage: 0.3}
+    generosity: 0.25
+    impulsiveness: 0.6
+    sociability: 0.7
+  - id: haneul
+    name: 하늘
+    age: 22
+    occupation: 채집꾼
+    traits: [자유로움, 낙천적, 관찰력]
+    persona: 숲과 연못가를 누비며 산딸기를 따는 밝은 채집꾼.
+    wake_minute: 390
+    sleep_minute: 1320
+    home_area: home_haneul
+    bed_id: bed_haneul
+    chest_id: chest_haneul
+    plots: [plot_09, plot_10]
+    start_pos: [24, 9]
+    inventory: {turnip_seed: 3, berry: 4, coins: 6}
+    work_bias: {farm: 0.3, wood: 0.2, forage: 0.5}
+    generosity: 0.6
+    impulsiveness: 0.15
+    sociability: 0.75

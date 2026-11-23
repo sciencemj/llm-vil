@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>llm-vil Phase 1 Square-Voxel Asset Showcase</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #141923;
+    --card: #1e2636;
+    --border: #3b4968;
+    --accent: #f7d774;
+    --text: #eef2f8;
+    --muted: #a6b4cc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 1.3rem; color: var(--accent); }
+  .sub { margin: 4px 0 0; font-size: 0.86rem; color: var(--muted); }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .controls label { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; }
+  button {
+    background: #2f3b56;
+    color: var(--text);
+    border: 1px solid #52638a;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card h3 { margin: 0; font-size: 0.95rem; color: var(--accent); }
+  .card .meta { margin: 0; font-size: 0.75rem; color: var(--muted); }
+  canvas {
+    width: 100%;
+    height: 180px;
+    background: #569c6c;
+    border-radius: 8px;
+    border: 2px solid #181c24;
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>llm-vil Phase 1 Square-Voxel Sprite-Stacking Asset Pack (25 Entities)</h1>
+      <p class="sub">Locked Renderer Defaults: pitch = 0.55 • spacing = 0.8 • defaultAngleDeg = 60° • defaultZoom = 6x</p>
+    </div>
+    <div class="controls">
+      <button id="togglePlay">Rotate 360°</button>
+      <label>Angle <input id="angleSlider" type="range" min="0" max="359" value="60" /> <span id="angleVal">60°</span></label>
+      <label>Pitch <input id="squashSlider" type="range" min="40" max="90" value="55" /> <span id="squashVal">0.55</span></label>
+      <label>Spacing <input id="spacingSlider" type="range" min="50" max="160" value="80" /> <span id="spacingVal">0.8x</span></label>
+      <label>Zoom <input id="zoomSlider" type="range" min="3" max="8" value="6" /> <span id="zoomVal">6x</span></label>
+    </div>
+  </header>
+  <div class="grid" id="grid"></div>
+<script>
+const ITEMS = [{"key": "villager_mina", "title": "Mina (Farmer)", "category": "Villagers", "file": "villager_mina.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAADtUlEQVR4nO2bX0hTURzHf3eJCS0hJ4YpJhphKOwhhiuzrX/0xyLSUkuDmP0xBz4kWE+WPqVQD4JLqCxQKKwUyZGEUlLGZE9GYQ/Zg0hWtF5aoKO8sbvu2vSce+/+3m3393k5Z9/f+XKvZ9ff757DDgCCIAiiSBi5bwBBEORJ1wl21uGSNBE5mmSoMD9iwulXKjgJSEToLN/O+n5uHHgT0LOGfnnnL5oEkrxJSTxUv5JR/AQgiUODQc86FpYEx2hSVGAZtxGfe/TLM3/uBF5auBoC4dX7RW8CZ7/X+xU7qTDp3X73cUOnZ+cXhe8/c7UKmuzkvz8eSZL7BhAknJRkCT/SHxzC/+Dol3f+5KRui1rSuCY7PSa0GpGy6gjVHygrvq3TBj37Y2EJ0lJU0PuvUpM0GqH6dbVd7C+nE9ao1WDvMzM0Ldb9JKT43dzds4vtzjwOhz895D4P51VD/fxjqBt7IenLV7ofQeSkZuda6qpFjPIqjfAAs/j1SUWEVjyI5VqXlQQzyyo1SaNRU5wKz6acohqNvM0b4etnh6gWKb9xvxbsEzOi2nKsXe0sgBOsKi0xXrY0BbCtnS0zX2bofoAvAyNwzzUIkO1ZFle4BmHSJ07zuxMn3yf5+TgtkcaK36RNBRM8B8hI4/QWrp8KAMJ+BEGAXkQIxQO3gJCEwtR4RjDefLUH/TE8f0h0UUX5eggSMcoqj4U0Jt79CBIouAIII4bCdVxrnRaO0zhUlcu1PQPCcdo+YLFmFddOOv4IxmnI7Xdv/UiJ141BQmLtHwRDq0l0DIIkbAFYv0Hj19K0SPl1Jfne1t5H10iojeeZhlsj1J+kNU/ngOXiAer+NZNexcXeVe5lr+Se9YtdhzveOI2i/lFBPx+Phn9TSzZ8bJvjdHcf2uZE/czNIc/P+i4dZY8knYSnvx9wOt/n44mK1BWAZdwWET+iPFYUgHyNyq+laTQOatXetnecrtEY7qhmpGiR8pMStFDSDmUsDU+iHPXThuPN3+8j+PYl4En0Qz6HVHz7CBK7lAqcZwj0rEOwLD/fEFABuEY4MUjSaJzqXPmWR9IQJNyIbbGJjZkZG4KtP3eDWp9DjDtts2CgxHj/vgsTUFBUDG+7/6+gknec82pi1w+H343r9W0/P68J+QskvOB1tJrAYrRR/T2d9wX9Uq4RK6Q0Z3PtQodnJSuFDGMfE63kHQ4wMSMIIivfXtYGdZKXT7bhOgmsROKnHCMIkpAE89bs6wkmkWPyRxAEQUDJ/AXu62I97uBjzQAAAABJRU5ErkJggg=="}, {"key": "villager_junho", "title": "Junho (Woodsman)", "category": "Villagers", "file": "villager_junho.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAADTElEQVR4nO3ZX0hTURwH8N91tSRnZhm5EB/6h4XJDMuRChUjUsLMDCpWREEFvdi/gRBZEQiWJURgPfgQw4KEREoiRgg2mSkoIlIvvRhpEZWmYUu7scVdXXfPuXf/3Jzfz8sZv9/5jsuFnbNzLxEAAAAAAMwfQrQvAAAgVDUF+eLI5LSmuemJOqpydgnhzM9VC6J9AQDhkp+zRRx3/+bOMegTqKu/W/HHi/zcvn/FRm3LWe9X0a92LDuJAlHl9K9p2UR4m0eo+WBgA4C4siZNx+1/HPP/8SMfO/dvx6Zkbr/77QTFsmKVTUhp8wl0E1LafILld7WW3Dzxu9tNyXo9OXp7BFaNJdR8gblIHJ+cJkOijpyuDoFVi9V8/fkycXj0l2LPmLKQKutaVHfv7MMHxB/jblltsUFPA02PNe388z0PMJ/VKJwkWCcHxe1qw4oEej+qXmMpyTFQxxu3ao1lXbqehr9Nq9YilbdsTiXX4Jhqbabm2mqx2DTEnZOxslqssF0VWHnPeKVvkDLXy/8Jff7w09dn5T0Lp/RZKS/1WQtprORNBcuV2kTEzwMAMU8SSicHPAKCuHLfdpDb33vpIfIxfP/u1Bzh9s3lDdw+BCYhwPkAMWtySgxpTqj5i9YS1TxvTqh5gEDhBBBGhVkpRDSkYY6y/eWZJD0C4vXJppxPW7XI97iF12eJdp796EfeH2iiuHTD3kaF1w+pzgGI2w3AuFQnG1m1SOXNG5f4RqeLXVOSXnpOmHhxnPs30jOH1RPWnvD2tl+wer+jsu+dt15vWu1dPKU+S/tNOzcv9dXyLZZtIn3y75c1dUY0bz/T4O1b757++67jSb+33rwvR9aPV1pPABW27ojkIT4Y770Ugt4AMlKmZCOrxlKUpfeNjl52jaX5ebugpRapfF3jM0FLjSVpV2PIi5S0kLZLBUfnrObLHPyFOtJ5aaG3B3n9ANGQmyqEZc5siq2rAQiBJc8kO33ZLx/1jtZrD2TzHD19gpY8Cys/0npLXFZylrKy86mz9t/L0Jk11ikwXHmPL223Zfn/a7z8ydpHfi9zZ9ZY+dLCrZruX+ur12HPP99j1pSV7H7qkn3H8KmdYqT+ZQMAAAAAAAAAAFD0/AHGIyGkzdWtOAAAAABJRU5ErkJggg=="}, {"key": "villager_seoyeon", "title": "Seoyeon (Chef)", "category": "Villagers", "file": "villager_seoyeon.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAADTUlEQVR4nO3bXUhTYRgH8Ofo1Fng5kc1iIzyxkIrV1kGiYnoKiu9KpGEEisogqLUrkK8KBUiQi/MUlCiupKc0yHS50W7MIUK86YgKbAQc0IfZnbiiC7mzvuesy/29f/dHH2e5z9lsPfwvtuIAAAAAAAgcgiB/gcAAALNbH0ufpyYVjW73qCnQ6ZcIZjyntL44kEAgsHxrEJx6vcf7kxSrIa6RgZkXzzIh/bz191QKI5P8fOpSRoqrZHPVxRnkBrPhj6Rr/PFRVspEHADgLCyc5WW239v5y8QyAf2+Svfkszt94/Zmb2SUh2pUkNhy8zZScjtHFxuAId37xXtv+ZJp42mHtsLgVVj8Ta/o+CU+P3nLK2Mj6OhwdsCqxbseTlq8pLGnP3ixKzzC8UQp6Hql/2qtn2RngeIVMVu7iRkdwCZhlgan55XrLGUGBPpyeiMYo1lw7pE+jr5Q7Hmr3zunlR6NfJFsbac9W6LKF27xyZk+6XpBqKyFtFUeVbg5V/f6aUDhnin3vC3OUeflZcWzqWf5fJLfdZCGiz5kxl6uTYR8fMA4B4cAfnY3NpMIsYNQOrFfH6jnKdej/Obrl6hd3XX3O6Fi9rGCm6/6nQ78kH8/JV1VHL7/Tk3uH1wT5Sb8wBBq/zcEa9mQj0P4C7cAHwoLzPZq5mi8jTFPG/GmBijmOfNSL1A9qWjH/bxj3I/1N1rfuSTGYCQPQJanbLC6cqq+Su/PWsNNdWcWPyt1nGmLbnc0EFDg+ysNvuYIL0L/z/v+vEvaYaVF7SmhfwZc4tLL3sxL82w8gV9PYL5/CVuXprh5aXrzOQHUS6fkLKRe/bubT6l7f5Cf7KqTKSDyz7tYdE5+uFK7Q6gq3LAL3mIPC43gFR9tNOVVWPZtznBce2xsWssfQ9uCmpq/sq3NtULrU315Clvv6AR6DypWKj9nV9Y6Nu8eQQA8OgG0Gx9KqipsVxotwhqagC+ZuuyUJ7Cm5DSDK+3zWQkfb78F3qmH78lm3WYm88ftFB6xi4a7bzoqEcZjzpqSn/fF3nJ3+GHTvmlGi+fplM+EODNSL3r1Z1e5etMtzzOA5Eg6Nxaa7EwA0DEm5E5tnRnl+ttXhTtoj8XegAAAAAAIKB/FhEZl/++POgAAAAASUVORK5CYII="}, {"key": "villager_doyun", "title": "Doyun (Merchant)", "category": "Villagers", "file": "villager_doyun.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAADc0lEQVR4nO3cX0gUQRwH8NlSue60OzTFP5kGIWKS+IdOqdQHCbro8KmQgorKsEDE8EAIMogeThKRQDMrBEHsocTyksBSKbgOU3owonoJIUGykvK6jNjYjV1c3Zn9c3vuufv7vMz5m/l66z7M7MwdIgQAAMCUKL0vAAAASo5dopeWQrJuhM1mQZMDNygt82a1Se8LAACYm5LJm8GMZTJa5c0sRu8LAEAruYXVdGj5D3GMJS4WvZseFH36g7x+92/nrmSkxPzcD/51cVkGUmNyQPizr9tNf/pCvv6sbbHIVTuE3T2QFiM5O49w80rBAgAMJT3ZRuz/urgM+Si+f3o6VJMob2AtuRu3mK1ctHCkFrPVi5bmC8DhUie9GPqL7JbNaNj/isLVcMLNF1WcpIOhZWS1xKGp8V4KV4v2vJj98bNs2zP6gvg7dp+4Qgd/BgU1a7wVlc2NhpWf6bsq6+lho+cBMLMSkV0EbvcgugPIT41Bs99pyRqOu2grGn+7JFnDyc6wo/mFX5K1SOUPOLej12/mJWurDXVcZ2/Qo4/fRPvpmVlZ+ebAb5SZkyboW/i8KGvi5F6L5bl+3EQaLfk9+3Zg/kJyHgCAsLsIsd0DHAEBQ/FdriT2lzY9hXwU3z+wvuBbQMAwvKf3hjVmo+cBUAp2ABoqz3Mg0hFQThJ5vT1yNIttmwPvRfvdBQls2/P/o4A1ktLtxOMirh9H7zz+6EfYP9OHDMlzL4D8rQclxwBg2AUgJWmLoMXVIpUvLkjh26lxfE2Mo+oCda6+CftByYdUJ7rd0Yo9v6ZSj7N95Z42erDRJeirbvMht/cJ8ex7wtsomu+pr0WPs6v5fiV5Jnu2o5t9f6V5Lstdv1S+v+4M21/TeYcufN7LZxkXH77k+41K7g7APT0YkTwwnzULQKaDErS4Gk5Fno1vh/34Gs7Igy5KTi1SebEJmjRphzMWh5koE72NGucnVOc993NVv7/SLIOZ6PtVZgEwu1sN5Act4gLQNeKn5NRwPHefUXJqAETqCE7tGC3y1so6lJvvRFM3T/H1lbX1yDOCY52CPFcj5ZnjJ9e1sTUf5q6sMWMcVeI7iER7HD8WhxljZClpCar69AITMwBAV66GFlX/lsHX3sLOX+fb2+hIPykbFXwLCACgK24iV5tRM5HD5A8AAACZ2T/vUTLTmBtQzwAAAABJRU5ErkJggg=="}, {"key": "villager_haneul", "title": "Haneul (Forager)", "category": "Villagers", "file": "villager_haneul.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAADlUlEQVR4nO2Zb0hTURjG35tL00xTSYSkaSREaFaGkqQZpKKYZWXkF0MTMbAiNOmL9kfpg2mWCYVolvUhEpJ0zKgoytAKDUQRStCSCcvAcphiKTe22vC2c869a5ubd+/vy9me533G5cJ9351zARAEQRAEQRAEcR04R18AYk7lyQxeq/sl0IJ8lkNJbSvnKvnDgzMC7cEmT8l5xPVILz/OT36blVTr6+cBbaU3OFvmlyoKR18AQiZ1s7fg+/tPsy6Tz00MgKlBjZlWUsvOlafF8drpeWZNkJcblKo6iQ8v5pf2/YuI9gcpjA79MNN2pweBJbSVmmtShghreFib/x9wADgh20I8JGlyzVtDcog70+8bZzcYzDv2/p2J92P6d3t04MxEiAwh0vCxdAiRho/NBsCxlF38xPQ8+Hu5QWPHS46m0bA2n5maxH+fmYPVngpoUT/haJqz50lIyespG/OAqcmfAs3bl/1gySnfPayFz7FCTTmslZxHEFcmnbCToO0ciDuAGKU7DH2dF9VoZMf5gapXJ6rR2KpcASPjc6KavfKZcQHwtGdSVPsXdX0Vr181mrdEPzg4BnL2J/Gp+cUcK1/xoR82bPEVeNqRGZNPy8cWHTX4ekh5o99Vfcep82mHTD8j9EfZeQRBgLqTIO0c8AgIkRV78rKZft+lJsw78f1TFuUyfci6yvYRi1hmWTmCOC9R6fusqlnqeQSxFNwB2JCE8D8vgO5p2D6NlKxQw1pxvp/pQz45HxTqaTpuYfk0HJ2PSQ78++kL0++qBlnS2/YIEsJzRGsQRLYDIDRQIVhpmr3yidt9TWuLmq6R8IrN5erLMskH2PrB8LgD8i+2UM+vuVUHDd6BugKe1DyNPo2HhTeZeaPvrPmapMsG/8pYNs/y5YrkHYCq0y55RB6cjjwn+Tkx64hha9wEK02jkRblY1obO+gajcrbak6KZq88qUGzmrY1tTTEGqXc89zaZlk3ekSerAtbaZOaxcRsAJxtfs5J0WhkVLRzUjQEsTViR2xiNXNvVKCb2Ak+8euJvu7VMMx9fM3MK3JfwMbwGBi4VWDSFdE5Jk1fY++84fO7JkHeqLHykYHif/BYNXrvWUOz2QvhhZpYvv3UddP3vddOGNaFmpRrdBR1R6q4xfrnbiuwMSMIsuQpvF9MPXrVU9wwYFir8sKJzbqm7wIzn1HUbVhbq3c4rFkjCIIgCIIgCIKAVfwGDHVD67vnomMAAAAASUVORK5CYII="}, {"key": "tree_oak_mature", "title": "Oak Tree (Mature)", "category": "Trees & Forest", "file": "tree_oak_mature.png", "w": 24, "h": 24, "slices": 32, "footprint": [2, 2], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAwAAAAAYCAYAAABN7JrlAAAEMklEQVR4nO3dT0gUYRjH8XdtWVP6YyRmGB6sQEQx7BKF0D8quhTRn00KqXPsIejSEgW1XqQOSxB0MKSQtS7VuUiQopMEiXQoD5EZoiUUKlFM7MqGxTg77/vO7Ow7+/3AErYzv4aHSd/3ebZJCAAAAABlIxL0BQBAGHQmu60fsz+1MlbVxMRwqt/2+zL51Efn/gGApaL/fAUADlq7z1tz39UWudWrY2K0vy8S5vyt29cKHZMf5h3fJz+89dlxuE54YTjlSQyAkKNTAMC17AK6tqFaqWLTE3OuFuim5XvRmXfq5JJPfXTun//F013W7Izc/VqzPiYyiQFX6wXyw10fhAcTAAAF5Tvn2dfHd+qL3aZjZyy7Trrp+bqd4UKdYvLDWx+vOv8yk4COzjVSWeNjC1LHkx9cfQ6erBUqMgml02AwNgAAXGlsrvGkUtlOehjzgVKW7wxnXyPD8pvgQ1ePW06dYvJLoz6Ddz5LZ7vJz0tmzlpTU3LXX1cXE6n4fVcTBtPzQ7UBiO/bY83O/7J9r6YqKjLPX2gVxe98AAAg33mW7USTH1x9VDv/KpOAfQfkJmJv3zj/25pi5p8+pTZxS8VFeU4AOjZV2v7++Mxv7Qs42O78FyLzXC9/z/Uu6/s3+93e6nUx8eIKn3sDUF4evZ0Q9QbnA0ApS7qYNOhMFrzIjxbqzGdfI5/sO/RZh3Z2Wiqd+nz+4Ouvjsep5udtGJoUlQ4TBl2mT0jIpz469w8AAJCfZMhORlQmGU6Ti6hK59+LSUChzr+XkwA/JxjkU59yv39gnhNtDUI8NTcfAKCnQvN8AAAAAAZhAwAAAAKTSH80Oh8wERsAAAAAoIywAQAAAIFJJxqNzgdMxAYAAGCU7GNGTc4HgJLdADStX+E6RObYYnO6Ni+um3z39Rkam869/Kq/6fky75VKPgAAMM+yjwHtefgskn9O/HILhexjBFWfQ3/u1pPcefcuHrHcHKeqItnifMDDZzrxf+vklzDmvxolP8j6A6bjMaYASlnbtipPjvFTNOwdxBvtaRZAAAAAKIp4811f156tkZsR3zcAfncQdTv8AADAWVPLSl8zyA+2PsWi0rWWOcfvfEhsAACgtqHa1yzT84FS17O/b/FjvekuS3YhOT62IDKJAcdmHfnB1udc/eKnHe59STh+rLrQ+UF3tk3onIcFGwAABQ313M5902ztPm+pLoCnJ+bEaP/iD8Ew5W/c7H33aWkm+eGuT7GpdJFlzrE7Nv8fcS33OE7d/GtbmsTXxJBv+V6e43c+4BY7IQCu7b58Qam79P9CPIz5ncluS3dhN/lhXgyn+m3/DPLDXZ9LLy9p3Zt5vbt6+bkOoCAmAAA8W2CXc74XXV2njKXvpR+/z/2aOLrFl/wHezflOqpO+XbX4DbfDbtr8DJfNsPvfAAAAAAAAOGHP9jdUZHHVAVPAAAAAElFTkSuQmCC"}, {"key": "tree_pine_mature", "title": "Pine Tree (Mature)", "category": "Trees & Forest", "file": "tree_pine_mature.png", "w": 22, "h": 22, "slices": 34, "footprint": [2, 2], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAuwAAAAWCAYAAACbtsmqAAADXklEQVR4nO3dT0gUYRjH8VkrNWszK01CjA4Z/ZEowijqYAidSq/VQb2IXmKD8tLCItjFOnQIjO2QdqhrerCLpwgED4F0iAw6SBeR0LI0hZqYYMG16X1n3pl3dv58P+BlZ97fyOMyPvM4zhoGAAAAgNBKlfobQPI0tXea6yvrSmvLq8qN2bFR2/ctudGsAwAAENsq2Q5oUXeoWmnd0vwquSWqw7GWOsOL2TFPywEASCwmXgiMlwmtaGJLbjTrsNHJnj5zZXnNVVZVusKYyQ8Lz2HkRrMOAIBiTNgRKNXJr2wSTK6+OnidrMsm7SpNn8VaY639X/NHbjTrsFHbQMZcXvwp3CddU2lM5h66ugAgN5p1AJKMhh1AyR08vkdp3cLcD3JLVIdTrfWGFzN5Z/sdbdkn3P7543el45Orrw4XrxxwtN9kznU0kFg07ACAUClMaK2v99PiSa3lbKbXdDKxJTeYOkw8+yTNdJNrdwy/p/bk6q0DNDfsV89dML+u/bLdVl2xxRifeqP0g9OVCwCIB9nkV3USTK6+OjidrKtO2mW32ljbrH38voWHXG91QEAT9ub6bbavzy3+Vj5o64m0cPv4lHK07cWAHxcB5OqtAwAAMtzKFN1bmfqe9ptfFoovjPbWVhrD3UOe+oe+hOTG8paYzRcZXi4uyA2uDgAAIL7OXyp+iMGHd98Sl9txo8H29eFu8boyz0cGAAAAoA0NOwAAABBiNOwAAABAiMWuYW+sKXP0GrnhqgMAAIivI827HL0W91xVwn86FTViYW3SHk281vK0EnL11gEAAJGGwzt92Yfc0sicyWrpHzIRy71cfjPle8Ouqzm79eQVTR8AwBZNVzTroNvI9cFU1/OsKduHXLU65E73pwbeDpmyfdzmwh+xfKwjACC6Cs2G9SEtskbRet600w9yIVdvHQrNnKzp27y/GyqNKLnO0ZCHVzjvawGQGLWNO7SsJVdvHYLALRDRrAMA//GnDQSmpafX0dTFqen847/vX3L11qHj3h1fc1/evf/Peadt8LbSMSazD4TnMHL11qHrxYBS7si1HL97AMAFTpoIXFN7p7l7/3altUvzq8bs2Kjt+5ZcvXXw2rjbNeoAAECOW2IQONVmUraWXL11AAAAAAAAAGAU+wMoUkCbP4lpYgAAAABJRU5ErkJggg=="}, {"key": "tree_young", "title": "Tree (Young)", "category": "Trees & Forest", "file": "tree_young.png", "w": 20, "h": 20, "slices": 22, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbgAAAAUCAYAAAD/YyiSAAAB40lEQVR4nO3ZsUsCYRjH8ffikBwiinJpaBKcqiFqcbumiCBaWjRamtzaAolqjDaHaLFsaWmVhvojagqcWypqaBAiuHAQkvT1fd87z7e772dS7/WnPh7P854KAQAAAAAAAABD4wzvpYG/vOOC//nxpVSasYmUuC9fSc9h8uyqHxAlTkZYQ6eZqjRV8uyqX1uptu2/vcpzp6ZTolK8VOpP5AWrX5y5w34DwG+5pXGtgjw3mtLj5JnXL7+eESbuy8GGUUtrTWttvyZNXrD6xR0DDkCk8p7aJubpUb55SWLeRkFv01Epqq2TbRRMrgZtyZMOuJ3VFf+9+d3x2GTaFdX6ndGuIOw8AEA48j0GseogH2Rev8Hea5D3vYJbnh3tuN946RxQOtYWu3/gat04smNohjEsybOrfgCQ6J8o20M4yPAlz976AYCJEaNnAQBguX8/4LIZt+tt8uJRPwAwJe1A3RqUbU1r/+I21P94yLOrfgBgyo2yWW0e3dD8AMAyubm00bGo8kzZdTkGINZ0mpvK2qTlDUpp4cyxOc9zTpxE/geH+JjJpkN9DnmDqXlUjU9lbdLydBq9ZzgU4iTxBYBdite7vs762ta59BwmL1j9Dh72tL6Pw/lTegoAAAAAAAAAQED8API+f9pNOlkGAAAAAElFTkSuQmCC"}, {"key": "tree_sapling", "title": "Tree (Sapling)", "category": "Trees & Forest", "file": "tree_sapling.png", "w": 16, "h": 16, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAQCAYAAAAPv3P4AAABLklEQVR4nGNgGAWjYBSMglEwCkbBKBgFo2AUjIJRMFIA40A7YBSgAr/eqP8f3/3CGiz8QmwMm4qX4Y2zka5/qAGWgXbAKMAEutZ8WIPl0fUfw16/Y4gIXvlNxYTtr1qb9P/VS9RMLCbOxtAWPI+ozEtP/TgzYFaQ5/+33/6A2cJcLAzT1m0nqeQZ1U9Z+I0CyoCThwAK/8r5b3TTHxEkjlW8jdQa0FqJE0zfePGbaMtH9UNAoDlqBE5bR1YQjoJhDpgG2gGjYBSMZIAzA2pIsGJlEwtGuv5RMAqIATiboHnTNlHUZxnp+l3Ll4/2+QYI6BhyESVGK/2kgNFR0EEG5DQ5yJIbLvqpAaKUpjAOpH49xvbRwncUjIJRMApGwSgYBaNgFIyCUTAKRgEDOgAAAI6dSCPsxA0AAAAASUVORK5CYII="}, {"key": "tree_stump", "title": "Tree (Stump)", "category": "Trees & Forest", "file": "tree_stump.png", "w": 16, "h": 16, "slices": 10, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAQCAYAAACRBXRYAAABaklEQVR4nGNgGAWjYBSMgpEKGNEFQu1t/3/48RerYgEOZobVBw9j6BlM+kfB0AIs2AQNpdmwKr7/FnvCoKb+N07SDJ/f/2LgFWRjiHz7GUN+9UHyEi8xiXhUvy3dw48FXTMIn3+K2xBXc6v/2BxBLf1/GBgYNMz4GJ7e/sGw+uR7ovUTSvzEZoJR/Wxkh5+rPh+Dm589Xv27Nh1EKURYSAl8Qo6gRD/I8SBwSJUDTEurcjDYmQviNANfSTgKBhbcunIDq7iajgZxVfBAArsTrwfaCaOACgA9seFKlEzUsGwUjAJsAJTocCU8GBhNgKNgQMGgq4JHwfAB2Np86GA0AY4CmgBCVS9GAlQUZibacGxqKdU/CkZWyYeRALvWHWCEjcfhSiCg4RNc42+U6k+btBUsPivP+z8+B8PUkZuw8akZ1c9MUfjBxvlIARiRWRbkgDcBwBIaLkCpfkoS4CgYBaNgFIyCUcAwZAAA2xjbPkXbBBsAAAAASUVORK5CYII="}, {"key": "plot_bare", "title": "Plot (Bare)", "category": "Farm & Crops", "file": "plot_bare.png", "w": 16, "h": 16, "slices": 6, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAQCAYAAADpunr5AAAA70lEQVR4nGNgGAUDChhBRJC9xf8PP/6RpFGAg4lh3cETg0L/UAYsMIaRhjTD68+/idIkysvKcO/BcxQxSvS76PMw3PvIS5J+Jf7PDOsOIsRK4gP/k6K/Z+F6xkEVASBgr8FDlKZrT39iFR9I/aG2wgykgJ6FDIMCMA20A0Y6GJYR8JzHgmGogGEZAZJfTjAMFTAsI2AogWEXAc+HUPEzLCNAcggVP8MyAoZa7hhRESA5CHPHiIqAwQjgEaAlzU60JmxqB1r/UAXgoQgFYSaGKzcekaQRpAeZTYl+EPjx5Q0DJcA8Zc6gGNsZBQxDCwAAE4tQUzQsqNwAAAAASUVORK5CYII="}, {"key": "plot_tilled", "title": "Plot (Tilled)", "category": "Farm & Crops", "file": "plot_tilled.png", "w": 16, "h": 16, "slices": 6, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAQCAYAAADpunr5AAAA60lEQVR4nGNgGAUDChhBRJC9xf8PP/6RpFGAg4lh3cETg0L/UAYsMIacECfDu29/idIkxMXM8OnbTxQxSvS76PMwnLr9myT9ZqqsDOsOIsQSPO3/k6J/wfaDjIMqAkDATJ6NKE13XmP36EDq9zbmYyAFLNiOyh+oCESJgJEMVESZGRgYQJi+YDQCoKBm0b4BKZKYBsLSUYAAozkACkbrgAEGo3XAAIPROmCEgtE6AApG64CRXgdAHEAcAKk99xBTjJ76h0sdAI4ABWEmhndffpCkEaQHmU2JfhAQEqCsSxLasnlQjO2MAoahBQDZemPnd6DLDAAAAABJRU5ErkJggg=="}, {"key": "plot_planted", "title": "Plot (Planted)", "category": "Farm & Crops", "file": "plot_planted.png", "w": 16, "h": 16, "slices": 8, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAAAQCAYAAADeWHeIAAABLUlEQVR4nGNgGAUjGjCCiCB7i/8ffvwjSaMABxPDuoMnBoX+UUA+YIEz/v1j+PTzL1Ga+NiZGRgYmFANokC/iz4Pw4bjH0jS76LPx7DuIELMzdTkPyn6d50+M5p4kBMACGiJgSKGMHjyEbv4QOq31eRiIAXsOo3Kp1YCWjMr7T+IDkmbxUiMODqYdCXpf57OPEZixamaAEYykOEHkcQlQHzARoeLJHF0AIpkbJGNS5xSMJoAoGDeHupUCRJWExhJEccGcEUyLUoA1Ip8FIw4MFoCQMFoG2CEA5nRNsDIBvNG2wCjYCSC0TYAFIy2AUY4kBnpbQBIABAHQGo//MYUo6d+aoN5I7QNAE4ACsKg4QA2kjQKILEp1Q8CJlroIqSB2kWHRsf2R8EoYCARAABY2Liwy5Zx7AAAAABJRU5ErkJggg=="}, {"key": "plot_growing", "title": "Plot (Growing)", "category": "Farm & Crops", "file": "plot_growing.png", "w": 16, "h": 16, "slices": 12, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAAAQCAYAAABA4nAoAAAB0klEQVR4nGNgGAWjYAQDRhARZG/x/8OPfyRpFOBgYlh38MSg0D8KRgG5gAXO+PeP4dPPv0Rp4mNnZmBgYEI1iAL9Lvo8DBuOfyBJv4s+H8O6gwgxN1OT/6To33X6zGjmGQWIDAACWmKghEkYPPmIXXwg9dtqcjGQAnadRuVTIwNZV4f+//LhF5jNI8DGcLR1NSM+8eGmHwRS5kf8B9FzElcwEiM+0PpRi/ERDGT4IRmQGAxSiwuoGvOCMbHig0m/hZcwg0uUJBiD2ITE0QEskRHLHgz6UWqAkQzm7RltElEK1HQ5GG5d/gFnExIfDPpHMwAVgaQyO0nswaafUlBmsoCx60zCfxibkDgt9G/6lQNW58c2hZGQOAjAR2G+fPuDt2pHb4PzcLGgjOJQon9anst/UCeYFP0BlgIMWZP2wD3THGeHs2rEBmoXHUIJiNFO9MgEozUAFEAyH3Gd8FEwfMBoBqBiH2CgR2EGWj8IjI4CjXAwOgoEAaOjQEMMjPYBKAejo0AjvA8w0KM4o6NAC8gfBRJg/cNACvjwG3UUiBL9oFGgM9c+kKTfRIu6o0CjYAR3ghWEQRPCbCRpFEBiU6oflqApAaMJehSMglEwChhIAwB/R+guldr3DgAAAABJRU5ErkJggg=="}, {"key": "plot_mature_turnip", "title": "Plot (Turnip)", "category": "Farm & Crops", "file": "plot_mature_turnip.png", "w": 16, "h": 16, "slices": 16, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAAQCAYAAAD506FJAAACTElEQVR4nGNgGAWjYBSMWMAIIoLsLf5/+PGPJI0CHEwM6w6eGBT6R8EoGAXkARYYQ06Ik+Hdt79EaRLiYmb49O0nihgl+l30eRhO3f5Nkn4zVVaGdQcRYgme9v9J0b9g+8HRwmMUjHgALwBAwEyejagAufMae0YbSP3exnwMpIAF21H51ChAtu0+/v/hiw9gtryEAIOXqyUjPvHBpr8xZNH/l18/g9ni3LwM9WviGPGJU1s/CJiWhf4H0ae7VjMSIz7c9A9oATCSgYooMwMDAwhTBuJ9dcH0gdOPiRKnpn5PFwOSxLEBN2VlMH3xxSuixJFBrIU6Cr9+DX5xdADLJDA2LLPgEh9u+kEgZVEEWO2cuBWMxIhTqn+0AICCmkX7BlXJPBKBuBI7w8t7P+FsQuLDTT8IqOlxMJAiTqw6XOKjBQAVgYOpLElsauunFOhLiJHEpjbYkrGE0WdGzH8Ym5D4YNSftS8DrG6a0wxGQuLYQJnBAkZSxCnVDx+F5+NihzaDieuDgwbxkEfxKdE/Lc/lP2gQkBT9oEHArEl74J5aXeMLb2YRA0JbNqMEyOgg4igYiWC0BUDlMYBRMAqGEhgtAKg4BjDQo/ijswADP4pvOjoLMLLB6CwAAozOAqwenQUYKmB0DGDgwUCPwouPzgKMXECNMYDRWQDKwGAYxfcZqbMARvJcDKSAcw+/ocwCUKIfNAvw7gNpewGEBJioOgswCkbBiB0EVBBmYnj35QdJGkF6kNmU6IdlaErAaIYeBaNgFIyCUTAKGIgHAHXgvwSkbdi1AAAAAElFTkSuQmCC"}, {"key": "plot_mature_wheat", "title": "Plot (Wheat)", "category": "Farm & Crops", "file": "plot_mature_wheat.png", "w": 16, "h": 16, "slices": 18, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASAAAAAQCAYAAAC2jqKZAAABuUlEQVR4nO3bsUvDQBgF8C9pjRpKKRFXK6KbIFgpbkGIg0gxCO5ODg7S0cHRwbE4ODh1F4rSoYMu2YqD/4AuzkIoIqEiGrmQ2kYc7kzgGvJ+0DbX8qAEcuk9rkQAAJIo7GnXXPd7/S+hYGlKpZbTHYs8AKRTfnAwZ0yT631yhQw9R6/ee+S9OHlrpUD3jx9C+erSBLWc4Xv7W6Yvkm92HExeAOMyATHVssYVenr5+0KXmd+uFElEsxMdJzGBNY4tn73Wz+4UnjHyyZ6/9qUdfF47uFZ4xshH3d7Ug/OzudNQeMZJ5CMTUJYtzuaIiD3+b20hLzRGPtnzZy5rQmPkozYqBaFxEvmfDqaoT4YXId8vELaEGu1w4uQvjiyfLcFE8mwJdng+vBNendSC2ZXX3mkbSzAAyVTZXwAAsgtLsBA6oPR3WOiA7FgdGDogidABpb/DQgekCZ2P39ABoQMCyBR0QAAgDTqgEDog+R0OOiBb6j4mdEASoQOS3+GgA9Ky2wGtlnUS8fDsRfYBxcmzfUBuT+y/YEZJxT4ggJQLbknzMyq5b32hIMuMHsfJDyaUOLCxEAAAAIjXNwSwuniq81PvAAAAAElFTkSuQmCC"}, {"key": "berry_bush_full", "title": "Berry Bush (Full)", "category": "Village Props & Buildings", "file": "berry_bush_full.png", "w": 16, "h": 16, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAQCAYAAAAPv3P4AAACO0lEQVR4nO2aTygEURzHf7tp/cm/kBBS/pRIUrL+xsVBSkghe1JbLlsScXLcIpSLUlwIJZSDg5SyQrmSA0oSFzZKFgej2Vq1vHn7xhvmzc7vc5qdN5/eNvN+v2/zBwBBEN2w6Dc18p3aEYf0/PROPTGxCTbwuBeI183svhGJAIEo6nFIL8/0CxATa4PTRfIFMLovk1+WQPXvLn3UcSP79qZUYMHjhrBBmE7Csnhpi9jIPkvnpyWB2X0jI1QCZhXQu2eAh1ufcH5JNVv3DnC6qC45QiWJkX07Y/KxJGHvbLfkvScXc1KKDeacS9Si/W+fWIBtNXbp8e0jaF9ipBXW94+YOg6vbzZWjx/AlZup2knTyA83KurjifvPT17/3G/uSoHK1gv/9uFG3o/xOSdjApamBw9deYMLKhS8PoKYAavefwAB6ChP5nJ4fURb5OQjpR8JLEAE0REsQAT5Y+R7wsB9IVMB5iRZmfYpwesj/4v8QIbH4fXNDPEhzOTmAdfTSl4fQX5LfnHUr8a08knQ7geFeQ+YnBHNdazePg/pudFcDq/v6lT3CuPL2dHG15LhqnmLnn5r3LQqX6ikqhtySizH7Y3NWkT0u2YGpKm1M/92f3uhor/cN6H4LeRuQwvcj80rLmr5BTbtW8pQxSiyP+gZYDr/47Xk82dEhElA2sI2ii8X1nLgx86Wal9evN3X2wCURKEtcNrY9MpNyLSi+UvZjdTG8N1Xmo81rd2+Sv98E6PKjQxBEAR4+AQFQF3m8a3HkwAAAABJRU5ErkJggg=="}, {"key": "berry_bush_empty", "title": "Berry Bush (Empty)", "category": "Village Props & Buildings", "file": "berry_bush_empty.png", "w": 16, "h": 16, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAQCAYAAAAPv3P4AAABtklEQVR4nGNgGAWjYBQMGGAcOKtHATqwrYz9/+XjL7wBw8PPxnC4fTHWeBvp+ociYGEYREA7Jvb/ty/4I4CLh43h6hLsETDU9YOAqhE/Xv3P737HKz+U9Vt4iTEQAw63MwwbMGhKEmISL75EPJT1E1Py46sJRrr+oQwGVQ0oq4a/9ISBt8++Dzr9etbEld4wcHUJaTUHoZpkKOu3ILLmI6YmTJ4V9f/dG+yZWUiEjWFu2jK8mZbe+rFmwCAbi/8ffv5DERNgZ2JYd+QEUSUOpfpHwSigBJg78GEVv33lB831+0SK4JWfm0ZkDWggiSr14B1qhiIEKNU/CkbBSABMA+2AUTAKRjIYzYCjYBQMIBjNgKNgFAy2DKggxESUGC5Aqf5RMApGCsA6CNO36RhFo5WU6h8Fo4BcoKrDQZYctfQP2XlAYSlOitQOtH5KgKQyJ0V6hrp+aoIKq3mMA6k/kHcSSfoHVU1lV5b2nxh1h7pmMQ5G/ZHTi4nSvzyzF+daSEIJEzSBjW8t5VDWX3qYuPDrtsUefkMRDJoaEF/CHir6cWUsatYK+NQMdf2jYBSMglHAQE8AAOABHlFlWrXmAAAAAElFTkSuQmCC"}, {"key": "hearth", "title": "Communal Hearth", "category": "Village Props & Buildings", "file": "hearth.png", "w": 18, "h": 18, "slices": 18, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUQAAAASCAYAAAAjSqeYAAACB0lEQVR4nO3aTSgEYRzH8WdRLPKSVt4PykEpcUKJpJSbkpdyIFycXIQc5IRcnFwQB2WTs1JS2xZuUi4OpBwoWS/Jy4HR1JLhmd151tiM/X5OO88889vt3/R/ZmdGCAAAAOAz1/uH2qYe7f7xWahIdScK/+bSR8ZfzAEAqxI+b5QUZQgV55eP0nE7cqoqs0Uk/Jvfxzp6x7Wb+wdLx2ekJgvv4oS0qZITuj7hFrRIFixyqE80zx9DQ/zPKktzLc07ObuNuZym+iKhwrtobd7XhdFsASWH+vzW+WN2YSW7cNLFKX8DEEZ5dYuW63F/G9fH9H1WC0iOs+qjM8tRZVeOKsdcIVbsbYuzp1fDWGFSnNivalDKKfOtSnMO6zodnfPXBAIBcqJQn6Pjc+HJTDSMXV6r3XuvKMsSU3Wn0n0jvjxxsGs9a21lzpZ7+HblzExOu/5lQ9S158cbtneuNMfndJanSMfHIvpFAH6Cv8wAEERDBIAgGiIABNEQAcCJD1XgDF+felrdR456fcyeKKvkvD9NBg0Rv2Brw2vLKxPkhK9PY3OHJmuGKrVbnl9wdff3aWb7RAxxzBViTZZLOrZv4djiwnTDMQWDOcac2QtxKJkbjRzdS2uaYTt+/c50bqicUFTmwjnsWjRirfGZ+ShCW9eAZscLlHblDI0Oa9F4ERMAAAAAACH1Bv9hSfV+v+a1AAAAAElFTkSuQmCC"}, {"key": "chest", "title": "Storage Chest", "category": "Village Props & Buildings", "file": "chest.png", "w": 16, "h": 16, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAQCAYAAAAPv3P4AAABNUlEQVR4nO3ZMUsCYRzH8b9eOJwRNJjOgRAuQYOBizSFL6CluUHaehHSKDQ1NIajS4O4RNPtLREc5Kyu6SaKT12IXc89dOqj+P0sz3H3/O6ee3j+d3AnAgAAAKxUItgonV+Np21+/K4N+Ikj1Xrth58seeZvun5Kri/9wUi7fjJpR7xhfu3ytuzM7ygfprQBv6M/IfnNnr/rs33t8ZuXeNd/646Wlr8o7okJL+QebL2AfhUgsM3KK36AJY1HBmDhKEDAIgoQsIgCBCyiAAGL+AoKiEgu48bqd3qS/d7qavNBP689V4BxB0B+/ebvsnqg2sZ971/540pata+tgVG+sOtEXr+QdeTj0zXKh/kr/7Ww9Yt/tm9QAIHm4536L9eMTD+H7q3f1lS+Hpl/MhojAAAAIMsxAaETqe8EUxAcAAAAAElFTkSuQmCC"}, {"key": "bed", "title": "Cottage Bed", "category": "Village Props & Buildings", "file": "bed.png", "w": 20, "h": 20, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAAUCAYAAABWOyJDAAAB4klEQVR4nO3bvUsCYRwH8OfSwrJQtMEwbXAKimpw6IUosMFCamjsZQyn/oScGpra+gOcgqaGlgQjzMU1CIIIe4GGtFwySru41c67n9dzXc/5/Yz3/PwiD8/9eHzwYQwAAABANFLjg/X5Kbn8Xid92OdysHQ2/yMDeZg/rBe8Hwqn2kKIBjtJDeam9EWqQ57x+YuP9bFWpLPa4xF/B4uwjpYykYf5M0q1wYB9pY5ykhl5J6cXcvHpVbVmKOBliwvTkp3yeEnZPA8NBrjZTIyqPj8r3FueF4+NG/oO8Dv89soAAA3QYICLuWjI0Nhf5YE18BNJAJXLOnus1jRrgt1O5hlxkPIOYjGZkpfMZCRq3u7Shm4NNU/R4w1zPUuQJDfXPKBBgxHESsilOV54rlmWtzXhIdUlM+RIsAk0GAEMJHpZvvSpWROedLG32yrXPEZsCMeDdXanl+en/fUB7AUNRhBrM27N8fOrD8vylld9tMJtciTYBA55BTA73MWlxqw8gGawgxHA4V6ZRfudumcm1ENeah6VvF8h10J7wQ4GAEyDBiMAvd0GtcasPIBmsIoEcB2QuWUpt+V3ii/kWspt+UTugWsez9v88M8ajHLblopSizw+c8NLu92mBgAAAABgLfkGACQEYQzfuEYAAAAASUVORK5CYII="}, {"key": "notice_board", "title": "Notice Board", "category": "Village Props & Buildings", "file": "notice_board.png", "w": 20, "h": 20, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAeAAAAAUCAYAAABVoO4uAAACPUlEQVR4nO3aQSikYRzH8YdGYSiyRJNictBetNnChYOk5CQcXGgPdtujLQ42TdvuYRVH4SCnORjNRbmPk4Ozk5AUiaxYppTRq2Yy3tc7z/u87zDzvt/PZcY7//fn8TzvvP/XOyMEAAAAAAAAAAAAAAAAAAAAAOSTgvceAADA3OeBH4n/t3GlafKXFoud6FxBNvOgxpd8MjQ2nfh3c5d6oaKsRERW/xhOskxtrucBQD5pDFYr7Xd2eq3b1toWsDWWnah+m0pT95s0c6fzcroBaz4116aeHxxfme4oU+tkXk9nvW5bZNU4S7Z2pKs9cRl/EJXFhSIc2zZdNJla8pg/jhfeH9k6H7jxIuHM4OLA7kWC0cXBy3mWYWXdVPPSGrAXtQZ8Yv/iwbFaL+bFi8rFaH93wqyu2u8Twftr8pg/jhcb7w/Yp52zZMisRW9LmaXfHY6l/+z5BgxndDWVmL6+e3JPHvPnyeNlqKNCqm5j6/X/BuFOnm7AwarCtEe7tV7N+1hXlDFPq9k/spY3EprX1YRDE67Ne254+MPT4+HMoWj41SDW1s4t5Wlj2xscF03ry09jSuYlqeQ9/xvdnpeJlfW1QmUfZGd+32ItUvejJ3/O6m4hzv6eNLz/LVPrdN7yyqKuZvzLN8M8K7UAkOu0LyTV1JYr7at9zvryi0lf/86bfmSUydLUhO582vc9pJS5uRAyPDerjtFobLkqbwYKAF6l2txea3LZaMAAAAAAAAAAAAAAAAAAAAAAAOFyjxfBV3QOgh2qAAAAAElFTkSuQmCC"}, {"key": "trading_stall", "title": "Trading Stall", "category": "Village Props & Buildings", "file": "trading_stall.png", "w": 24, "h": 24, "slices": 26, "footprint": [2, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAnAAAAAYCAYAAAB6K8C9AAADZklEQVR4nO3dT0gUYRjH8WfaRSUpa4nU1JKoSCoSSg9tfwykJJQ0g8oiTx7yUl6FiAg6Wl6SPAqFh1KpPXSQEsEOroduQhBkaSiEKSFkJBNt7KzrzG5jM7M7s/v9XJx5ff25vryL7z4zu68IAAAAAAAAAOcoDmYDAOB5vcdPqTPLK9p5Sa5PSm/flanZRa1tV1GBTN+7I2b6nTtbo6QyH5nJn+4HAACA2zUV52jH4/N/F1GtDQe0tpHw9Lr6rdZ2aLP+F545rG8bMtkP2bWAuxA8qi78iK3srdiS55OBsYm4VwDkMz5unz9/vq5tX69EOeQzPswf7z6/vI4KYhZU4CqLfbaEfvxm3E4+4/O/86f24Eax08BY/Hn5VntyE+WQz/gwf7z7/MoEVBAzD5dQARHpCtnzijtRDvmMD/PHu88vpBcVRGMs4AAAgKtRQUyygLOzdGyURT7jY2X+AADgRb0OvcvYn6rSMfmMjxXtj0e5tAEA8Jw2h95lvMHqAwMAAEBqsYADAADwGO0S6s2m0+rXpV+2hG7L90v34Ju4S17kMz7ZPH8AAHDsXagndufaEjo5Z/yBq+QzPm6dP83VBvceWNA9aNx+//ITdXbpu3ZelL9JOvuvKkMP6tVP87EF5M6AXxo7QsrTqlr183KsvSzXLy3h4YSLQ6fzAQDuwMeIAClWt3ePdvzuy5x2fC0Y+7Di0cmf2vGl7Xna8dvF5FXC1uB+XVtnv8j5iwF95w6RKxUFuuaW8L/+AgBAunEPHAAAgMdQgQMAAHCI0vNSf1tKj8kPPE3SjwUcICIPQzORcbhVX2JLTqJNsq16lrMQyUq0mbdVzR+mkuZ7dTNy8hkfK/MH6VUd8OnO91WVxrXVVJXKe5P9MgULOCCFm81X7iiMa4+en6zIiWuPnh8r8LtiM2/yGZ9snj9Ir8oXr/UL6kDsXuKkTPRzqkLmNO2/Q0Vh/MrVCqMs8hkfN8+fxqC1ytvanK7QhOFOJF1Sa/hzgboBw1f85cOvTFUCtPzQEcPvK2V9hjlK3/N15Xt1M3LyGR8r88frqGBlpoycrAAA2LmX5epF0Pj8SmSPytWX40bC05G9LM30i+5lGaXeaNDfAvGoT/9A2q+LmX6KspX/7VmAS6gAACRBBQsAAAAAAAAAJMv8Bmud5jZnqH7ZAAAAAElFTkSuQmCC"}, {"key": "well", "title": "Village Well", "category": "Village Props & Buildings", "file": "well.png", "w": 20, "h": 20, "slices": 26, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAggAAAAUCAYAAADod8WqAAACkUlEQVR4nO3cz0vTcRzH8c+sg62apWjEJMURHQqG9oOQ6FAnBYNAggRPXaSDhw6RIDRPhYcdxUsQDBIkELoVeYn05GV/wC5BRK5MpVaX+sYMw9rc3vt8Pt9999n3+Ti5+fm+kK9ft9fnPfwqBQAAAAAAUE1k94vxu4+8je2C0tEei6rM3NTfLBfyAADA/g7ufXDxXFzpyL37UvZ5m3lD13qVicxc6XM6paNS2SCvsc7fvYdPvPzm15ryOo8dUemZO5RJNLXkzfte4dsPrWOjh1tVdmk24mceGrAghFGtJWa/MkSe+fnTLYHlyl/R6Mhprbz0jNZhgFN6+rq0jst/3C55rv9St9HPkl0yOhw+CX1BcMGLrbgqbJX+Ue4VbYupG23vA8lLPZgQtf/U43lPsm5s9LYo79nzBVHe4IWrorzVtTeiPAD+05lKVJpG2M4LAwqCI3oHzlT8/nrugzjr/PBZ2cIVWUEAgEaYcpSbbphOObIhnm5QEAAA0JCsYSohmUbYzjNFQQCExq8P7nwEkVlejdhYTx7nL8jrBfWdcuQrTDd0pxzVphvFa2Dj+09RVvuhAyXXCgUBQF1JXrSKL1ZB5QHNYih5tKb1meV/H1MQANRVoqNFJVRL1XW5z78CyQPwBwUBECq+EdlcH9a81OJb2X+93LriBZEXlt8HUA0FARCSvhFJ15PH+QvyeoG5zhMxX9baMpZ+aXQNUBAAANDwen7aagl7OjXZUKWOGZQDuhInrawBAFfo7LiD2KU3MyYIDrj8ac1qXnzlldU86R0SpaR3SJTiDomAe5p9d+6CUE8QEqeOWz2GPH/OOQC7THba7NLDI2JrF/j//fht55nuKqX39wcAAAAAAAAAAErgN2Fkbg0pkPt5AAAAAElFTkSuQmCC"}, {"key": "cottage", "title": "Villager Cottage", "category": "Village Props & Buildings", "file": "cottage.png", "w": 32, "h": 32, "slices": 34, "footprint": [4, 4], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABEAAAAAgCAYAAAASRA0GAAAFHklEQVR4nO3d7YtUVRwH8LOuPSxKPiSkYKC9CF8UmGaQD0svTDAhCJLeiC5CukIE9WIwlczQkEEKInBcQTZYiFCQZCuoXpSuBkYS/QNFCRXoZmJsUTYxprGzj6Pee87s3s8HZN3ZO+e79zfn3r0czrk3BAAAAAAAAAAAJraW1L8AAEBRlVeuqv7859UoWXPvag2lvlMtzZQPADFNjZoGAECdp+bdGaUi5/qHD3RsfvieqJ9GqS9qHACMPgCyvmNn9dKVgZCnmdPbwtHufSOO/stPW38AgJhSz0BJnQ9A4hkgjyyam2vgd+d/G/PnRc5/sv3+EMPR7tF/9uyKZdXa1/aOlzLNPNn91rWvx05/NeYffvnqr/85/px/inv+vfTHPyEPM++e0vT5RWYGDACxWAJDnQWz/rs+27B2UaaV+eGDxq775Ku//uf4c/4p5vm3ZvG81pCH73+9NrYzptUPTQt5OnY61+aZoFLPQEmdDxCbARDqrHx+d2hfOi/zquyoVMLJr38KB3rXjbmdfPXX/xx/zj/FPP8y8W0bWBwGL+WtLbs92PZNtPxDs1cMy9/af7rp9z+rGTDj7X/e94BpZP/zvAfM0KX0sZd9y1d//W9gQhx/BkAAAMjE4KXE4y07zoP8iVX/LGeg/DhC/svLlldjzYC5lfys6f8Tq/9PtvxPj73ZMnhAImZ27VYSWzZ3/p/fdaRSHe22DwZAAACAJDKbATNO2/nPgBn+2o5HZ9V97ylIkJ4BEKBp9B3eE9qXVnJrW776N3P/A6BYsp6BMlTsGTA3mw8pGAABuG5/eXm4nGPbB3rPjruN/HT1B27Pwvkzhn9/MXF+f+J8+5+2/hPg889qBswnI+Sv6Y83A6Z87/D8Ulu8GTAj1j8i+TNCaVc56rKXoWrLXhrZzgAIAAC3rXTxi6RVXPPtR0nz7b/PP6Wi9//y3lLS2SXyS0nrP/j+H+MxAAJw3fbSmbCjsjG3thvZRn66+gMA8bz7zNrq+d//jpI1f9rUsOn4xy3NlE8aBkCAplF7DGeebTfyGFD56p+q/wFA0ax/oC1Kzpe//DXstY2PzQwxbToeNY5RTBntBwAAAACThQEQAAAAYNIzAAIAAABMegZAgKbRd3hP0rblq3/K/gcARfL4fXdMyiyam5ugAly3v7w8XM6x7QO9Z8fdRn66+gMA8TxYOZH0qSgtr7znqSwFZAYIAAAAMOkZAAG4bnvpTNK25aetPwDEtGR266TMgmZmCQzQNFY+vzvXtg/0rpOv/k3b/wAoltUnPk+6BGPOwQ8tAaFwzAABAACiMwMCiM0MEAAAIDozIIDYDIBQp6f8WugJIXS9fyjTymx5bmtD28lXf/3P8ef8U8zzLxSRGRAAcRkAoc6CWY0tBXx1y4vhwsDVa/+f09YaXu96O5N25av/DW90dtb1jR2VSkP9b6T33Ur/q7VTe3TqjRto3kz+0PfJn5j1H2xw/liy6n9ZKnp+3m3D7TADAiCuuiuC0q5yNUZoeW9pxCuRoud3HalEyd+yufO2rwTf6Wiv+11f6D4Z9eqyCPkbejbXZfRsONLSSP5Y78s6v7O0JFTK53LJL/rnL7956w9ZKq9cVY01C+Bc/9VQ6jtVd7xc2LYuyrXHaDdd/OzpJ6opBxxS7z8Acd3SSXh9x87qpSsDda/NnN4Wjnbvi3JST50PAJCFog+AAEDTL4FZOH9GCKH2L43U+QAAWXAPCAAAAAAAAAAAAIDQoH8BJS9KCHhhVyoAAAAASUVORK5CYII="}];
+let playing = false;
+let angleDeg = 60;
+let squash = 0.55;
+let spacing = 0.8;
+let zoom = 6;
+const cards = [];
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+function extractSlices(img, count, w, h) {
+  const c = document.createElement("canvas");
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const out = [];
+  for (let z = 0; z < count; z++) out.push(ctx.getImageData(z * w, 0, w, h).data);
+  return out;
+}
+
+function renderStack(slices, w, h, rad, sq, sp) {
+  const count = slices.length;
+  const diag = Math.ceil(Math.hypot(w, h)) + 8;
+  const liftMax = Math.ceil((count - 1) * sp);
+  const bw = diag + 12;
+  const bh = Math.ceil(diag * sq) + liftMax + 16;
+  const cx = bw >> 1;
+  const baseY = bh - Math.ceil(diag * sq * 0.5) - 6;
+  const ca = Math.cos(rad), sa = Math.sin(rad);
+  const body = new Uint8ClampedArray(bw * bh * 4);
+  const out = new Uint8ClampedArray(bw * bh * 4);
+
+  for (let z = 0; z < count; z++) {
+    const sl = slices[z];
+    const liftY = Math.round(z * sp);
+    for (let py = 0; py < bh; py++) {
+      const dy = (py - (baseY - liftY)) / sq;
+      for (let px = 0; px < bw; px++) {
+        const dx = px - cx;
+        const sx = Math.round(dx * ca + dy * sa + (w - 1) * 0.5);
+        const sy = Math.round(-dx * sa + dy * ca + (h - 1) * 0.5);
+        if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+          const si = (sy * w + sx) * 4;
+          if (sl[si + 3] > 0) {
+            const bi = (py * bw + px) * 4;
+            body[bi] = sl[si]; body[bi+1] = sl[si+1]; body[bi+2] = sl[si+2]; body[bi+3] = 255;
+          }
+        }
+      }
+    }
+  }
+  for (let py = 1; py < bh - 1; py++) {
+    for (let px = 1; px < bw - 1; px++) {
+      const i = (py * bw + px) * 4;
+      if (body[i + 3] > 0) {
+        out[i] = body[i]; out[i+1] = body[i+1]; out[i+2] = body[i+2]; out[i+3] = 255;
+      } else if (
+        body[((py-1)*bw+px)*4+3] > 0 || body[((py+1)*bw+px)*4+3] > 0 ||
+        body[(py*bw+(px-1))*4+3] > 0 || body[(py*bw+(px+1))*4+3] > 0
+      ) {
+        out[i] = 24; out[i+1] = 28; out[i+2] = 36; out[i+3] = 255;
+      }
+    }
+  }
+  const c = document.createElement("canvas");
+  c.width = bw; c.height = bh;
+  c.getContext("2d").putImageData(new ImageData(out, bw, bh), 0, 0);
+  return c;
+}
+
+async function init() {
+  const grid = document.getElementById("grid");
+  for (const item of ITEMS) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <canvas width="220" height="180"></canvas>
+      <h3>${item.title}</h3>
+      <p class="meta">${item.file} • ${item.w}x${item.h}x${item.slices} • tile ${item.footprint.join("x")}</p>
+    `;
+    grid.appendChild(el);
+    const img = await loadImage(item.src);
+    const canvas = el.querySelector("canvas");
+    cards.push({
+      item,
+      canvas,
+      ctx: canvas.getContext("2d"),
+      slices: extractSlices(img, item.slices, item.w, item.h),
+    });
+  }
+  requestAnimationFrame(loop);
+}
+
+function loop() {
+  if (playing) {
+    angleDeg = (angleDeg + 0.75) % 360;
+    document.getElementById("angleSlider").value = Math.round(angleDeg);
+    document.getElementById("angleVal").textContent = Math.round(angleDeg) + "°";
+  }
+  const rad = angleDeg * Math.PI / 180;
+  for (const c of cards) {
+    const { item, canvas, ctx, slices } = c;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const buf = renderStack(slices, item.w, item.h, rad, squash, spacing);
+    let sc = item.w >= 28 ? Math.max(2, zoom - 3) : (item.slices >= 28 ? Math.max(2, zoom - 2) : Math.max(2, zoom - 1));
+    const dw = buf.width * sc, dh = buf.height * sc;
+    ctx.drawImage(buf, Math.round((canvas.width - dw) * 0.5), Math.round((canvas.height - dh) * 0.5 + 8), dw, dh);
+  }
+  requestAnimationFrame(loop);
+}
+
+document.getElementById("togglePlay").addEventListener("click", (e) => {
+  playing = !playing;
+  e.target.textContent = playing ? "Pause" : "Rotate 360°";
+});
+document.getElementById("angleSlider").addEventListener("input", (e) => {
+  playing = false;
+  document.getElementById("togglePlay").textContent = "Rotate 360°";
+  angleDeg = Number(e.target.value);
+  document.getElementById("angleVal").textContent = angleDeg + "°";
+});
+document.getElementById("squashSlider").addEventListener("input", (e) => {
+  squash = Number(e.target.value) / 100;
+  document.getElementById("squashVal").textContent = squash.toFixed(2);
+});
+document.getElementById("spacingSlider").addEventListener("input", (e) => {
+  spacing = Number(e.target.value) / 100;
+  document.getElementById("spacingVal").textContent = spacing.toFixed(2) + "x";
+});
+document.getElementById("zoomSlider").addEventListener("input", (e) => {
+  zoom = Number(e.target.value);
+  document.getElementById("zoomVal").textContent = zoom + "x";
+});
+
+init();
+</script>
+</body>
+</html>

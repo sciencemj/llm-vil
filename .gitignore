@@ -1,0 +1,12 @@
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# local secrets (never commit)
+.env
+.env.*
+!.env.example
+llm.local.yaml
+**/config/llm.local.yaml
+
+# local save games
+saves/

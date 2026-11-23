@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>은빛골 — llm-vil</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2376a856'/><rect x='5' y='3' width='6' height='9' fill='%23e87078'/></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="world" aria-label="village view"></canvas>
+      <header id="topbar"></header>
+      <aside id="inspector" class="drawer hidden" aria-label="villager inspector"></aside>
+      <aside id="god" class="drawer-left hidden" aria-label="god mode"></aside>
+      <aside id="llm" class="drawer hidden" aria-label="LLM observability"></aside>
+      <aside id="saves" class="drawer hidden" aria-label="save management"></aside>
+      <div id="replay" class="hidden" role="toolbar" aria-label="replay"></div>
+      <section id="timeline" aria-label="timeline"></section>
+      <div id="toast" class="hidden"></div>
+      <div id="help">드래그·WASD: 이동 · 우클릭 드래그 / Q·E: 회전 · 휠: 줌 · 클릭: 주민 선택</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

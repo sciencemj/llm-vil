@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "sprite-stacking": {
+      "source": "danielwh2/sprite-stacking",
+      "commit": "6fecdfd0d6e5a0595f979550e05f4b1fcde550fe",
+      "sourceType": "github",
+      "skillPath": "skills/sprite-stacking/SKILL.md",
+      "computedHash": "4c713107e171dc8a2c06507ac63223790a3134148cb4b40831d0b2e57d8cbc4e"
+    }
+  }
+}

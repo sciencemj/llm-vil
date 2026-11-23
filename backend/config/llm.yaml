@@ -1,0 +1,101 @@
+# LLM provider profiles & capability flags.
+# API keys NEVER live here: each profile names an environment variable (`api_key_env`)
+# that is read from the process environment or backend/.env at startup.
+# Select with `--llm-profile <name>` or LLM_VIL_PROFILE; embeddings with `--embed-profile`
+# or LLM_VIL_EMBED_PROFILE.
+default_profile: demo
+
+profiles:
+  demo:                          # deterministic, zero-cost, offline (tests use this)
+    provider: demo
+    model: demo-rules-v1
+    structured: native
+    simulated_latency_ms: 0
+    embeddings: demo
+
+  openai_compat:                 # any OpenAI-compatible endpoint: set base_url + models
+    provider: openai_compat
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    fast_model: gpt-4o-mini
+    smart_model: gpt-4o
+    structured: json_schema      # json_schema | json_object | prompt_only
+    extra_headers: {}
+    timeout_s: 60
+    pricing: {}                  # {model_prefix: {input, output, cached_input}} USD / 1M tok
+
+  openrouter:
+    provider: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    fast_model: openai/gpt-4o-mini
+    smart_model: openai/gpt-4o
+    structured: json_object
+    extra_headers: {HTTP-Referer: "http://127.0.0.1:5174", X-Title: "llm-vil"}
+    timeout_s: 90
+    pricing: {}
+
+  ollama_local:                  # local Ollama (no key); prompt_only also works for small models
+    provider: openai_compat
+    base_url: http://localhost:11434/v1
+    api_key_env: null
+    fast_model: qwen2.5:7b-instruct
+    smart_model: qwen2.5:14b-instruct
+    structured: json_object
+    timeout_s: 120
+    pricing: {}
+
+  anthropic:
+    provider: anthropic
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    # claude-opus-5-5 everywhere by default. For high-volume villager turns you may set
+    # fast_model: claude-haiku-5-5 (cheaper, also accepts forced tool_choice).
+    fast_model: claude-opus-5-5
+    smart_model: claude-opus-5-5
+    structured: tool_call        # forced tool_choice where the model allows it, else auto
+    effort_fast: low
+    effort_smart: medium
+    refusal_fallbacks: true      # server-side `fallbacks: "default"` on supported models
+    timeout_s: 120
+    pricing:
+      claude-opus-5-5: {input: 4.0, output: 20.0, cached_input: 0.20}
+      claude-sonnet-5-5: {input: 2.0, output: 10.0, cached_input: 0.10}
+      claude-haiku-5-5: {input: 0.10, output: 0.50, cached_input: 0.01}  # cache reads ~0.1x
+
+  gemini:
+    provider: gemini
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
+    # gemini-3.5-flash-lite: fast and free-tier friendly (gemini-2.5-flash 404s for new
+    # free-tier keys); gemini-3.8-flash for reflections / weekly goals.
+    fast_model: gemini-3.5-flash-lite
+    smart_model: gemini-3.8-flash
+    structured: json_schema      # flat OpenAPI subset only: no unions / $ref
+    timeout_s: 90
+    pricing: {}
+
+embeddings:
+  default: local                 # used by every non-demo profile unless overridden
+  profiles:
+    local:                       # fastembed ONNX, Korean/English, no API cost
+      provider: local
+      model: intfloat/multilingual-e5-small
+      dim: 384
+    demo:                        # hashed bag-of-words, instant, for tests / demo
+      provider: demo
+      dim: 64
+    openai_compat:
+      provider: openai_compat
+      base_url: https://api.openai.com/v1
+      api_key_env: OPENAI_API_KEY
+      model: text-embedding-3-small
+      dim: 1536
+
+runtime:
+  max_concurrency: 4
+  timeout_seconds: 30
+  json_repair_retries: 2
+  retry_base_delay_s: 0.5
+  token_budget_per_day: null
+  token_budget_per_run: null
