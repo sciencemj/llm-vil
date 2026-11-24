@@ -1,6 +1,6 @@
 import type { WorldStore } from "../state/store";
 import type { TimelineEvent } from "../state/types";
-import { ACTIVITY_KO, el, fmtTick, ITEM_KO, WEATHER_KO, ko } from "./util";
+import { ACTIVITY_KO, el, fmtTick, ITEM_KO, MONSTER_KO, WEATHER_KO, ko } from "./util";
 
 const FAIL_KO: Record<string, string> = {
   state_stump: "이미 베어진 나무", state_empty: "이미 딴 덤불", state_tilled: "이미 갈린 밭",
@@ -27,6 +27,48 @@ export function describe(ev: TimelineEvent, store: WorldStore): { text: string; 
       return { text: `${who}이(가) 산딸기를 땄다`, cls: "events" };
     case "cooked":
       return { text: `${who}이(가) ${item(d.recipe)}를 만들었다`, cls: "events" };
+    case "crafted":
+      return { text: `${who}이(가) ${item(d.output)} ${String(d.qty ?? 1)}개를 제작했다`, cls: "events" };
+    case "mined":
+      return { text: `${who}이(가) 채석장에서 광석을 캤다`, cls: "events" };
+    case "gathered":
+      return { text: `${who}이(가) 약초를 채집했다`, cls: "events" };
+    case "shop_sale":
+      return {
+        text: `${who}이(가) ${store.name_of(ev.target_id)} 가게에서 ${item(d.item)} ${String(d.qty ?? 1)}개를 샀다 (${String(d.total ?? d.price ?? "")}🪙)`,
+        cls: "events",
+      };
+    case "shop_stocked":
+      return { text: `${who}이(가) 가게에 ${item(d.item)} ${String(d.qty ?? 1)}개를 진열했다`, cls: "events" };
+    case "p2p_trade":
+      return {
+        text: `${who} ↔ ${store.name_of(ev.target_id)} 직거래: ${item(d.give_item)} ×${String(d.give_qty)} ↔ ${item(d.want_item)} ×${String(d.want_qty)}`,
+        cls: "dialogue",
+      };
+    case "drops_sold":
+      return { text: `${who}이(가) 길드에 ${item(d.item)} ${String(d.qty ?? 1)}개를 매각했다 (+${String(d.coins)}🪙)`, cls: "events" };
+    case "bounty_posted":
+      return { text: `${who}이(가) ${ko(MONSTER_KO, d.item)} 현상금을 걸었다 (${String(d.reward)}🪙)`, cls: "events" };
+    case "bounty_completed":
+      return { text: `${who}이(가) ${ko(MONSTER_KO, d.species)} 현상금을 달성했다 (+${String(d.reward)}🪙)`, cls: "events" };
+    case "request_posted":
+      return { text: `${who}이(가) ${item(d.item)} ${String(d.qty ?? 1)}개 의뢰를 올렸다 (${String(d.reward)}🪙)`, cls: "events" };
+    case "request_expired":
+      return { text: `${who}의 의뢰가 만료되어 예치금 ${String(d.refund)}🪙가 환급되었다`, cls: "events" };
+    case "monster_defeated":
+      return { text: `⚔️ ${who}이(가) ${ko(MONSTER_KO, d.species)}을(를) 처치했다!`, cls: "events" };
+    case "fight_lost":
+      return { text: `${who}이(가) ${ko(MONSTER_KO, d.species)}와(과)의 전투에서 밀렸다`, cls: "events" };
+    case "fainted":
+      return { text: `💫 ${who}이(가) 기절해 치료소로 옮겨졌다`, cls: "events" };
+    case "monster_respawned":
+      return { text: `이끼숲에 ${ko(MONSTER_KO, d.species)}이(가) 다시 나타났다`, cls: "events" };
+    case "tool_repaired":
+      return { text: `${who}이(가) 대장간에서 ${item(d.item)}을(를) 수리했다`, cls: "events" };
+    case "price_set":
+      return { text: `${who}이(가) ${item(d.item)} 가격을 ${String(d.price)}🪙로 정했다`, cls: "events" };
+    case "tax_paid":
+      return { text: `${who}이(가) 마을 세금 ${String(d.coins)}🪙를 납부했다`, cls: "events" };
     case "ate":
       return { text: `${who}이(가) ${item(d.item)}을 먹었다`, cls: "events" };
     case "gift":

@@ -127,6 +127,7 @@ def test_take_from_others_chest_is_witnessed_and_discovered(config):
 
 def test_hunger_is_non_lethal_and_slows_work(config):
     w = awake_world(config)
+    w.actors["mina"].inventory["berry"] = 2
     w.actors["mina"].hunger = 99.99
     for _ in range(500):
         w.tick_once()

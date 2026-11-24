@@ -49,6 +49,18 @@ button { font-family: inherit; }
 .drawer { right: 12px; }
 .drawer-left { left: 12px; width: min(300px, calc(100vw - 24px)); bottom: auto; }
 .drawer h2, .drawer-left h2 { margin: 0 0 2px; font-size: 20px; }
+.title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prof-badge { font-size: 11.5px; background: #e8f0dd; color: #365722; }
+.faint-badge { font-size: 11.5px; background: #f6d2cd; color: #8e2b20; }
+.equip-row { display: grid; grid-template-columns: 42px 62px 1fr 44px; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; }
+.equip-row .k { color: var(--muted); font-size: 11px; }
+.equip-row .ename { font-weight: 700; }
+.equip-row .track { height: 8px; border-radius: 5px; background: #e8dcc0; overflow: hidden; }
+.equip-row .fill { height: 100%; border-radius: 5px; }
+.equip-row .dur { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--muted); }
+.shop-card { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; margin: 5px 0; background: #fff; }
+.shop-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; font-size: 12.5px; }
+.shop-head .k { color: var(--muted); font-size: 11px; margin-left: auto; }
 .drawer h3, .drawer-left h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .close { position: sticky; top: 0; float: right; }
 .persona { font-size: 13px; line-height: 1.5; margin: 6px 0; }

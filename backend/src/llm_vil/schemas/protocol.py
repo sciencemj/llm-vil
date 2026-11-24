@@ -25,6 +25,7 @@ class ObjectChangeDelta(Frozen):
     state: str
     version: int
     data: dict[str, Any] = Field(default_factory=dict)
+    pos: TilePos | None = None  # moving objects (monsters)
 
 
 class ConversationDelta(Frozen):

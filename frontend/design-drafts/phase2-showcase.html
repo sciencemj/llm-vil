@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>llm-vil Phase 2 Square-Voxel Asset Showcase (20 New Entities)</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #141923;
+    --card: #1e2636;
+    --border: #3b4968;
+    --accent: #f7d774;
+    --text: #eef2f8;
+    --muted: #a6b4cc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 1.3rem; color: var(--accent); }
+  .sub { margin: 4px 0 0; font-size: 0.86rem; color: var(--muted); }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .controls label { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; }
+  button {
+    background: #2f3b56;
+    color: var(--text);
+    border: 1px solid #52638a;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card h3 { margin: 0; font-size: 0.95rem; color: var(--accent); }
+  .card .meta { margin: 0; font-size: 0.75rem; color: var(--muted); }
+  canvas {
+    width: 100%;
+    height: 180px;
+    background: #569c6c;
+    border-radius: 8px;
+    border: 2px solid #181c24;
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>llm-vil Phase 2 Square-Voxel Sprite-Stacking Asset Pack (20 New Entities)</h1>
+      <p class="sub">Locked Renderer Defaults: pitch = 0.55 • spacing = 0.8 • defaultAngleDeg = 60° • defaultZoom = 6x</p>
+    </div>
+    <div class="controls">
+      <button id="togglePlay">Rotate 360°</button>
+      <label>Angle <input id="angleSlider" type="range" min="0" max="359" value="60" /> <span id="angleVal">60°</span></label>
+      <label>Pitch <input id="squashSlider" type="range" min="40" max="90" value="55" /> <span id="squashVal">0.55</span></label>
+      <label>Spacing <input id="spacingSlider" type="range" min="50" max="160" value="80" /> <span id="spacingVal">0.8x</span></label>
+      <label>Zoom <input id="zoomSlider" type="range" min="3" max="8" value="6" /> <span id="zoomVal">6x</span></label>
+    </div>
+  </header>
+  <div class="grid" id="grid"></div>
+<script>
+const ITEMS = [{"key": "villager_taeo", "title": "Taeo (Baker)", "category": "1. New Villagers (5 Professions)", "file": "villager_taeo.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAACc0lEQVR4nO3csUtbQRwH8N8rJThklPKG0AZRySAiUhTkGTI5qohDUHFqRRxKC51EikP+ACcHEengUBwyFKcMEuQhpXQoIiKphFSCBFEQsSB2ePIGIeLv7j1zL+by8v2Md/dN4oHvuN9dQgQAAAAAAK3DaPQHAABotEKp4uTyP32NHUkNUHfcNHTK1+plEC8CoIOPIynnz9mtdEzXqwit5PLsPw/yzT1/pd/fHdv+Jc1b1luK942y+fm0RX4UK/xnbHS+FlgAIFTGBtql/YelK+RDPH/p2bS0v1w8pjArSHYS3M7h0QIwkbSck/Nret0epeyubYjaRFTzSxNJZ798Q72xNspkdw1Rm+55DvL1nz+AVjcv2ElwOwd2B5DqjVHx9NKzTUQ1P5U06aB46dmmW/56b9PZzm5RT4d8THRoxqhH3t0C/9hcl+bdMaItcLPnAeBpUAKCUHm/+Fna/2nuC/Iazx88rxfP/H4AAKAJLAAAAC1KyxIQV2v3W78PIj+Z+UqTRGR+s53qQ5WDqXFpzq3NuzXqWII/hCkf2RSV1K9V825t3Csfb4L8m6M1tv9vYk6azyy/E3U9GLOSyyOv4fyBJgsAd1jr9wBXFXfL4yk3P4LIz1ZunftrU9Wn535ex31AuVexuL5uH4eXyI8alYUhdv7iaRz+AtR1AeCuaXpd3QwyrwPVb9khrzZ/5upezfl/pycqb00XWzvUZnWyfTf2sbDv3n9zmBJ9g7S/8eFBe6R/mm0POq/696vkl5bXhbuB6j6Ve/5ewn7PP+hnT1M9mAEA6qEg2LWLcD/loJrvMCO+sm5FIqifggAAAAAAAGohd6JkPAny3XZ6AAAAAElFTkSuQmCC"}, {"key": "villager_gangcheol", "title": "Gangcheol (Blacksmith)", "category": "1. New Villagers (5 Professions)", "file": "villager_gangcheol.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAAC2ElEQVR4nO3bMWgTURgH8C9FQtEMpYQ2lFBEpASnUCRKjKWIFIfi4GAEO3Tu0EGcREREnIpTydjJ4cxQRJw6SAklQ6biICFICEGOVLR00BIQPHlHW3PJey+XvLu8M/n/lqTfe/9cciT37t69EgEAAAAAwOgI6X4DAADDprGWtnb3j+3ni8nzFMsVQ4PMu3XOjxcF0CG9eN/6/q0h7ROdilFxN8/9MSGvd/+1HvREZAdD3fl22fW4/XhQOKR+qObdwAAAQyV59bq0/Wu9hnyA99/pQU+k28FQd75xMohML0ye1dhzYz9p9TJ42P1y5LuOASBlj+ImRadmqHQyUvNqIqr55QePLPYlic9epA/G65CoFvQ8j5u87CzEzRdIdfv/ex5AtyxnEGE1P8/kPb0CmE9lqF6rdq2JqOZvLd2hSrnctRa0/M/iG+vZzjHNJRLSPpH0SkjUdqFuULbl7KGjz4o4zwZatm3Z9lkf0SCsmvfi86vkAaA3mAKCofL2xbK0/cbqJvIB3H/3FjLWxuEE0TtpnIgm7b7bhb2Ql/lRNab7DQAAgB4YAAAARlQgp4B4c+1u5+/DZonGqEJsFrlxJWmxWoIqROUKhc0jX/NsbppdXl6ameC2V80jijwXX3qyPLsJ3LqCoBW7iRTLiee/2dx8/I8p3X5Jcumrmvfi86vkd17dFTU5+kTSeeQDtv/YlIzsu+/4DRidCyFU86OKOwDwbta6vYGrirfKo9eVH+xAwcxGI46/B53vl+pqAdXts/zLtXFH7WmuOdA8AGgYAHgrPLot3WzvW3JR84vqzR3dedX/+PPq/W8X9Ob79cusq8TpR/4jjWcuc9uae1+Ebad+x25SInmNPm2tO+rh+Yfcutd51c+vkl968l54NdDaJpWKnj092KjYj9OP5/61dzs5Us0rGtT6fQCAofPZuG1t1poWe5TVZHmrutqRb68BAAAAAADQyPkLSnqFQ20V7KQAAAAASUVORK5CYII="}, {"key": "villager_bawi", "title": "Bawi (Miner)", "category": "1. New Villagers (5 Professions)", "file": "villager_bawi.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAAC1ElEQVR4nO3cUUhTURwG8P8iJELEhxF7GD0MExsjImRKrDFiRA+xYlQE9RS1N4eBTyFDxMcexKcY4ZNEGAzpKWTIGCI5fIqYYWOEDJFYIMMk7OHGvdctR+ece9e92z257/eynXPPN+8ues7OuccRAQAAAABA93A5fQIAAMU3USX7Yc/UhYiO9pP/QdZlZ75bnXb6BADsMn4jonz5dihsc+FcD80u55h//Mg7e/3GkgEyY7NQoXbkiyYGEdHg4XT+X2AAgBPldtAtPF78WkNe4uvntDGDQYQ3eMiStzwAxMMhZbu6T+fdvZTJr7p4dTxW89HEnLJb/kwe3xBl00kXr072PEs35CfjYWWppv8S+2ob2mO5b1h7vNP3iWYy+bbmAbpdkTGT4M0cmDOAyCUvlXf2DOt4rOZDt2JUKm4Z1smW319bUCYKbhrwD3LbLK0tKL1XH7nakVc7z6p/UJgfjYcVXidqRz7g66eqN6aVIxX900ruqByoVLQ27coDAHsmwZs5YAkITpSnzyeEx58lUshLfP2gs051+OcBAIAkMAAAAHQpKZeAWGvtZtfvncyra/PqTVRhm3H+TVSreXVtPOq+K8y/FKyf25FX1+iTwy8ouRIjd1W/51OqbdHc9Xf0On8ovIlbz6vtVcfz9bIwP/VEdOqNNrPLOeQlvH4gyQDAullr9gauVaxdJkY7T2TPt+J/z6sd9ExGeyXKNmrz5E+bz6vt9Vf4k28uAwBPK/8n8NcAwNqmabR10848gBU/drYt5b8vrtCZ0ADz2M/VEvdY3S/PNRq6PEIf55NN9T1XHjLr7c5bff9W8pNTr7izgePHOuHetKep/Da1ayq3ebRbJvVe33pcN31zoyP5TkPHDABS7F1vpT3rqyAuBr2N8sjjA8qnz2rPw4kDWp/Xn9c7aaNPycHIfeV4vpBbbKmvVPPr2YR+LtF0y3kAAAAAAACy3W+jWUld/hczFgAAAABJRU5ErkJggg=="}, {"key": "villager_rina", "title": "Rina (Adventurer)", "category": "1. New Villagers (5 Professions)", "file": "villager_rina.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAACmklEQVR4nO3bsWsTURwH8N+VEoIECeJQSqxQHOxRikiIRWooRRwzFIdQi2Om0kE6dMiYwUH8AzqIg0iRkiGjSIYQSikZQikRRAKGkkEUgsQSqhi5aCAl7/fu5V6ud2m+n6Xwfu9773o88nKXd0QAAAAAAAAAAHDJGV6fAPRLr8bbRyetc20LkSBlsgVjHPJO5RLx9mH9TNonNh2gRE58Hsh7e/32Yivtg8apNL8YvkKPD/Ou5HMjPn+cmBzWgcB+EsomX2/+92yI5mfFtXHI61y/1PI1WZnKn5rSOvLeXr+N+WlpvXTScDWfGvH5wy0k3MIxyX176/3GJmrj6OZX40vt2rcmzVwPUbZQNLg2v+Zlk9Bu8lnMZxM0FxNPgo/RU6Kk7SFosSpe10v2Ua289eEdjYSJqkyHSJj2iF8EuvnOMbgxJHkAEC8k3MIxIWpci08ptXF088sLEaU2v+Wb+2/+fQAyrJrVR5afi/HjWDVZPppJ2Y5v9XErDwCjBY+AhmzrqSmtv/Z4fDr+6mreazc2tqX18mYaeR9fP7hYwjsAAAC4/LAAAACMKV8+AqrWG0ptfsuH7q8bds/IQ+mMIctXdh9K82Zync2X0jsG/R9/5n2Fao9McR+FPHcMWV70Q/fb4BmttQKyiDQ/iJXtlFqfXAF5H14/8MkCcFxtKLW5QbTLRmXnjV/ydh+QdszkB618d/zOjp1C0XHeyTG43TlZzTzARSkrbLN0Mz8Mg7wn0LcAiLZpDvICj24eQMfPek0r//1dnoJLt4S1VvEzW+v6NfWAbt+5R0evNs+1B+4+EbYPO6/7/+vk88932LuB3prqHaC1JdpSefnH0fncfHG18/fL1g+l/gnNF6y8zgMAAAAAAAAAAFC/v/YLEiN0MGNAAAAAAElFTkSuQmCC"}, {"key": "villager_hyeonwoo", "title": "Hyeonwoo (Guildmaster)", "category": "1. New Villagers (5 Professions)", "file": "villager_hyeonwoo.png", "w": 16, "h": 16, "slices": 24, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAAQCAYAAAAf1qhIAAACtklEQVR4nO3bzWsTQRgG8HdFSg9BingIUkuREkooJYhEKbH0EEoQhFJEFvVQxEMvBhFP/QN6kh7EQ0/ioYTSQxEECSGISCgSgoQiUUoJUkLIQSGUKqKWkdm4sNrZj3Qm7m54fpeFmXlodujubN6dEAEAAAAAAAAAQJ/T/P4AAKps5susuv3RcUxicpzmM0nh/z3y4Z2/RGaJtZs75MXQ2RhV88uaynxYnfT7AwCodHfhumN/5d175Pt0/iam58iLxm6tJ3m3hcTLwiGbl14A5qdTbO/zAY2cidDmm5Jm12ZHNm9OgPVkRW1Bz4sgH7wLAEA10ULy/NFV41hvZVlsNKr1Mi+y86nFCq/LNDuTJGte+A1gZnKY6s22a5sd2TyfgH9XWVFb0PIHW2tMzxENj8Vtx5S21lhk6rbWizy/efKsU54yS8zuJiqTr62nWfFtmwq/nPN37l9k6ctDFNeLmso8QL948aB4pO2QOguAF+a1ZHU+OkCLeorqrR9/taMEBMrcy05QYcV9zIdyoyd57ty3imO+QoOO/cj7O3+gBr9OrA5txp1Q9PcAACBksACAMk5P5l7GyOYBoDuBLAGJau1e6/d+5nltntffbj5LCvtzC2WKTNnXrmXzvDafc8nHn3jPb6xmjeONxceuebMmX1sn57zemzw3e4q/PB6x67aMQT6I89fP5h6+NO4hx93EIJPnD01x/bTmeQEQvaz1+gJXlugEuzlpv/OdG1RR3JcPVz42uhy6PIDfGl08bIpcW0lL5bvZIHFkARBt03TbuqkyDyDja3NPKv9l4xUNpsaEfd9Lu7Z9pp/RKzSeuETbTzvfXkwDF24J21XnZc9fJl/YjxHti5/0jT6DeTze7wSCriq5TZnnq/T/4MYMAKHHS6cyT8mJP1ugvZAp5QAAAAAAAJBvfgNxTleHSNuROAAAAABJRU5ErkJggg=="}, {"key": "monster_slime", "title": "Emerald Slime", "category": "2. Mosswood Monsters", "file": "monster_slime.png", "w": 14, "h": 14, "slices": 10, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIwAAAAOCAYAAAD9uPTtAAAA+ElEQVR4nGNgGAWjYBSMAloBRhjDYUXZ/2cnnuFVLGUhxXAgoguuZ1Tf4AkXegEWZI5fngVexWdOPcIqPqrv0aAIF3yJjVqJDCXBjIKhD/xwJDZciQwGjvy48v/ChzsoYgYCKgw2HDqMwybB3Dj1AoWvYSYxKPUNFRAh7oTCv/ETM5Ex0dE9o2AYgNEEMwpIAqMJZhSQBIZ0G4bcNgS99FUoxoHpjvuL6KKvJSCOQYNdjmR9IybBjALqAfTeEFEJhlDXCxcYSvpuVGwDszU6vMA0Oh+Xvl3hLQxyikZwdeh8bCBkZQtZ7iS3hCA20kfBKBgFo4BhUAIAO9Wbdk41NOMAAAAASUVORK5CYII="}, {"key": "monster_boar", "title": "Bristled Forest Boar", "category": "2. Mosswood Monsters", "file": "monster_boar.png", "w": 16, "h": 16, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAQCAYAAAAPv3P4AAABm0lEQVR4nO3Zv0rDUBQG8FPpFMRBREKQUhSKiEOHDKWDD5CpSJ7Abo51cXB09hF8ApFOfQCHThkcpIMghBBKKSIlSKdC5AqRJE1ub42m+fP9lrY5+QIJ55ByLxEAAEAZVahAelrbHY3n3HNOFInuBsPI+0Y+388vj6r+H5radMcfc1J2JRoYzxXRWlbyjN5SuDc8smbcOvL5fn49zhCLDK+XnzjBa8g70lrD7/Urw+vZwAAyrWOZrKkTeVFeLSt5AD1miFcNrz9vWJ+BY2ptWzjv71eG17Nb4QO8k0Waf9N5gDwJvAF5f+14tazkAfJm6Q0IAOnBAAJsEAYQICsDyJZOm4cNl32GT+TVspKHctPUpjtfXtj/wWqr+i9J/jewDQGFYk0dkmgRU+Nv8oe3HZIQXTSsZm0bIWl+3b0aCOpe79PR2ZA6p3uB4/2Xd3p7atPV5exf83/R9IOE+TRhad/HfDXcg1qdJv3HyIcld87JtkyqN9RKEfOQvvg/vCXFGtQ27cjawjJTy9/cP9Dthf59zPsukgcAABLzBa2YhzX8e0SpAAAAAElFTkSuQmCC"}, {"key": "monster_goblin", "title": "Mosswood Goblin", "category": "2. Mosswood Monsters", "file": "monster_goblin.png", "w": 14, "h": 14, "slices": 16, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOAAAAAOCAYAAAA2YxATAAACZklEQVR4nO2ZMWhaQRiAf0MIJYiEIiENIiFIEClOGTKUh0iG0KFD6BCcMnTqVBxLx5AphA4hZOieNwSHkKFDkCCldOgkQaQ8gkiQUKQ8SpAipS+c5oXnee/e8zzP1/h/i7zf+96d53/vP08ABEEQBEEQBFFKSG13SBDZ2n9l1com872l9Bzo+VNmnqB3OvT6mR72BsjjYGMrwYxXK030BOZlU3th1Zu3PbF4NAyF0peQ6wK0JWdDVsyts0G97LuMdfPjFhZWwlD8eBFyi9F82NSs8vUf5gdPx57ATqEk1SNPeuNTnekl3sS5FUK1J1LJVGGPL5mKurZJpqKwtq1Z9njtfIjMz/ryfv9sdXKHIOK55ZwImXSs5/qqYXpXQCLRDVkxWd7ayzjUjF+eMZqctsCMX16ZI/HoybS59ki0WPof0wunop12zkUhw+MlG+0FqdLSbZwVhuRDPDEHfry6YT7kjqinkinlPU4IfhItCB4yXsa+AFlPnXE8iZDgUHVUP7IlbLX/+vZIW+IM4hFsDxTTtwVlbRm9tpGisD6w30nw2jLK8N6/1qxqo8Wdgxl42hdb/mpCogFwtgjQdvMqU32/yWR4PJze0dsNq1zr9jHP2bbSDOM9hwhApQ3nqRnuItKpcar0xroAWYclbgcoMjxR3A5LRuElF2dhl/cFldjhSs0Efa8UHI9Bbr27bT3wONGT5TmT/jgXgWer3yGTX+nE6GvZnmr85j/+DTHhXBpN0A8/h1R7er57reer96+917K9QcfZvefoKyMuQA67J2KV9n/xSHIG3fs2nQUwikL9IQiCAI87JV3xJhj6PcwAAAAASUVORK5CYII="}, {"key": "bakery_oven", "title": "Bakery Stone Oven", "category": "3. Stations, Resource Nodes & Buildings", "file": "bakery_oven.png", "w": 20, "h": 20, "slices": 22, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAbgAAAAUCAYAAAD/YyiSAAACgUlEQVR4nO3csWsTYRjH8SfiFKRIKVok3BBEtHQoocghEkLpICIODiIORbdOTiL4Fwji5FC6WRwcHBxExCFICRKKg4iUKodkOA6xEoJ06HpylUg4L3fvpe/l3ua+nylN3v768uTI0yR3jwgAAAAA4Ggo9W/cuffY97wfI4VUKmdk4+mDf1lFzAMAmOX44A9LDXukEOe7G3l/0fL6TfN8p62U8616KbZZkkf98jxe1pcb/nZ3X9KYnynLanOTf/6g1dL1Vb/762fkYzOnZuX96/VSYoODhieiYUt9KroBhrVq9tBmSR71M+F4ubVQkTS2vV7s42mapkqz1J2Xpai9HmZPRcurLS5G3u+63tDfocFpZO+8lfm9aeX19U8vZdrryQZ51M/A4yUrqk0zqVlmlfdiZdn/7O7FrlmwpuT282bqF+rwXlX3RN5fbseRQVb1nMShwQFAyEqjGluTL50uNTsCjuW9AQAAssA7OAAYk8N+JFn0PCvhI8kwGhwAjIHuE1yKljcKGhwAwGjDLgNIwndwAICJRIMDAEwkGhwAYCLxHZxGW3NXpXfWOriAVkWrdlOcYOpEc5M86mfc8ZIV3WfW6TbKBdwwEw1Os2D0kXOiJs8ub8Wuu/vBFkkYk0SevvopySkvmCai4qAZjTlPt0k8Uw/mosENeHjtXWSRHr25olTM/tDaYDDobqsnp+9HX7Ox+8QR1/MSzwwK5528UY5c9/vVvhF5cfLOEwVp8iwrfjxUMB9PNU95VFbCOy3deTQPTFSDSxq8mpbpeWFfPw4f2plG8MI2KyI79bJ/4WLlv78xt9YuibRT58la3CoD8sTcPOXFOeQBAAAAAABIof0BhwmCja+knjIAAAAASUVORK5CYII="}, {"key": "forge_anvil", "title": "Forge & Iron Anvil", "category": "3. Stations, Resource Nodes & Buildings", "file": "forge_anvil.png", "w": 20, "h": 20, "slices": 20, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAAAUCAYAAACj6Wu2AAACkklEQVR4nO3cMWjUUBzH8SdIh05ylFLCcYiDHJ1KOYocRY6zSCnSoRTrIMVRHBwcxKGjODg4OBRHKQ4inURKBy1FRKRTJylF5AiH1HIccohrJNFIc+all9zL3cvL97Mkl5Df0fTy/snLS4QAAAAAgEE548/UF287reOjRCFj4xNi5/Wzf1lp5N26+9hpNr9FblcsWuL50/uB7WTIY/8N8/eimn+8yY5Fd9q9PMt5M7XrTutY/v8YG7fE3u4rY/J0dfbkh+lKJVGIbTdDl6vOq9cuRW53+MWO9T3ksf+G+XtRzT3eZMeOkXkzs9J1duOrcXlhhanfQtRvXqCAAMP2dnsrdPnc/IKReSqpbJyzkJdX0ycKU9JCpCqPAgLjvVttBz5f2SholXd0p+rs7v/y5mtTo2Ji/WPsM8qo7p84XUNZyYMeKCBAEgt/u7O2PinZfyvby970+4PwKxxARxQQAMgQW0G3lSoUECAJRVceqeXlgOqGVKeGWUb1yC03b6+P7SkgMF6/9yjSzvPueawrjTReGg2pTg1zVlBAoBXVo5l0zwOyLFMF5LRx9nMjH0SnWvEeSvKVrVHxaPN96NkFeUE/O21xYXI2sP+ixoUPOi+uQT2X0Wp3vGmhcE5MVZcCf6+rWDov3rx80vMZ7rUb95ym3ZCuj5sHiLwXkF6e8LWWLztLVSuw7HPjB3k97j/3oaLuh59k/cLDyOt+8CmqGA0yz23wL5bL3nz96vx/6w8PDkRcbs7qzT8js7qtrT2MnQfkuoAAPr8oqbrpqToPyAsKCDInj6NvAB0ZV0BkXVbkmdGY6jr6Jkk31Wk2XmwqzwRSextvqVRM/I6bsDdsqswDAGh8BcLLzgAAAAAAACC08xvhVNs+YWAwUAAAAABJRU5ErkJggg=="}, {"key": "kiln", "title": "Charcoal Clay Kiln", "category": "3. Stations, Resource Nodes & Buildings", "file": "kiln.png", "w": 18, "h": 18, "slices": 20, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAASCAYAAAB2K0TGAAAB1ElEQVR4nO3crUsDYQDH8WdiWhiGISLHgsjSkCELBsOYywaTLAxtS2IQ/wgxmdYUw6LBPMRgMOpYGsNwHCJyiBiWhBODw5N7eZ5x5567fT9p97LfwQP3O3h2z4QAAAAAIC/z82Hv4MSxrGeFrwphGMvi4ux4nKFjTqdZdx7MD6WcciEnGpddrXMYn+DxAdJg/vdGrbqh9OXB0PTcr1tOs7qilNN7shORw/gEj4/KwzCo5HXLwYwWNJA2sg9Dv5LXNUem7GVKPqocxIOCBhIqrOzDSj7qnHa96vTtkeexUj4rWt1bSl4RBQ0gMrtlw3N/33pTyqlttxz79cW1L7+4JG6u25lZyqGgAWhpvVJxbZumlYqcx8NP1/ZWx//cuYmuAACIHQUNAJqioAFAU8xBA9CSOeEcr+45+3d/13f451LQALSj+nZEWnMoaCChZN9P/i+85xy9RBT0YDAMPF4srkrlnNqlwONH+X4ic9I6PjqVmG5lGNXKPlYIJqig/f7LQlUcOeeb977zOWHXG99cueCcsJtQt5w4xkfqvJhz0lpilCFUJWLp5ffqm47REws7Wdf+96uRaFhr0vM6uuZ4mVZO0HGVnELB8P2hJar5PAAAADENX7PMeFNxZN4bAAAAAElFTkSuQmCC"}, {"key": "cauldron", "title": "Alchemy Cauldron", "category": "3. Stations, Resource Nodes & Buildings", "file": "cauldron.png", "w": 16, "h": 16, "slices": 16, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAAQCAYAAAD506FJAAACV0lEQVR4nO2av2vbQBTHn0uGkslDaYwJRmgobqfgwYMxwYQQjPEQQiimFI8lBFGCp5J0yNQxU4f+ARlC4mYoRmjoYIoIxQRPpZgMxpjiIWQIGUwLhSuXxokVJN0ZWZF/fD8gLPndVxJPd+9+vCMCAAAAwPQRCvoFwH+SmZfs4rwj5Y4nT6NUqx5avh303vyXL5TYr3ZLSj8fU6hysDdUfVDM9F9sry+yRqfrKohHZ+lD+Zvty3vV80rMf+9/nIe0iyqRXeUZlj6RTJMM7VbT9n/ovflvaSUrpT9rNHzRBx4AOGupqKvgZ+vS1f75bcTVvlO+crXHFJVKqYXrhnqfsqI6frxhIWpEoud71YPx5vVMztW+/1d3tX9cM1i9Xbe1JWIJ0o6zIV8DQJDwnvHLZorNGeu29sw7nSLVE0cH9HrW31+XWdO0Bio1HabHy/Y9LwCjhGqot+e5T3cdykn9h5Q+a+yyttmiWFohI7vrWucf0YTyvLRqOQBwIl8osWfxuLSDeFmuGZbeD15tyU1HJjYAAADGbAoAACDLsF/fMG/Pw2/CUu7hw35DcjqAAADABNJbTNROi6RvmWSeNqZrCvCnVrUcADhROdgLDZKa42X78/he9X6hrRaFZUZqBMDz6FpXpSP9u61d6y5SMjPPRHl+p9V+0T4AAEYNSxaA5LIAnOt04fHNxfsBAoAozy+C5/lfKPZzFZl78zx5qFBxaMCzvq6c9p4fpB6MN/uCPP9ADfcBsAQApx16snjVi3rmoO0ivOqDDj7Trj8boR16AAAAAADkG/8AOedNW7Aujh4AAAAASUVORK5CYII="}, {"key": "ore_node_full", "title": "Ore Vein (Full)", "category": "3. Stations, Resource Nodes & Buildings", "file": "ore_node_full.png", "w": 18, "h": 18, "slices": 14, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPwAAAASCAYAAAB/5bOVAAACXElEQVR4nO2awUvbUBzHX8oQ8TDGkCJBdihShodRxIMnEREpZYweZSf1tIOUISJ48SrIGFKKeBDt31BGKVKkpx3GDj05CJ5CKSIiO42xQzMSTUjaNMl7TZq85Pu5vPeS9z45lN/vvdf3CAEAAABA/BD0yuqHT8rD/R3V4On0DLmunRmOID0PXck6Rsxy6elnPrei/H681+qvXqfJTbvl2B+AUXhhbiwsLlINluWO7XO/PBsfN4x6s1G3vFvLFwb6N5stLjybpWOl0+lq9d7fRzIjvjHeiZnPirnv7KxIquV9wc3jxjg8gLOAjzJ2AcWzZ3VlyVM/6VbmyuOWPLwmjKh54gI3AZ8UJOl24Jm6nXDbGkTJY5c8DE/vH3m3VFS8bHmckpBb4gnCs2mTPFgSRpgeBDwYO/qWb9hWLsp8OT406vX6FVXCiIIHAR8AB+8bWllMd8h8jd1zufs0K/76ES8PCI9UiN8GAIwZzPAg0uxMXVnalT/roXoyrT2Tk5ASeRuqR13G04AZHoAEgRk+AI6+5U3n8E1mz9bXOa2U5clYeXilWt4XtnfylnsS1cqFwOrJ5USt3W53mT20YxDwMaNQWLeUJyenXHv0pbfheX4ulc+ZPKOyXGkIUfLQkoiAN+/fRvnh/fJs965Jbkq09WSzT7OojnrMMuys2snT73PyeIHGYz4aevn9p/VlasLzzOToAUwkIuCjiLqMU5FSsq8e2pnPrz+DdPqDucr4/aA8SccS8H5dhPDLM+wuOi3F2oSpxe4stTOm1uANNLblXCN0D4ICAAAAAIBwzH8xUHbeoLME8AAAAABJRU5ErkJggg=="}, {"key": "ore_node_empty", "title": "Ore Vein (Empty)", "category": "3. Stations, Resource Nodes & Buildings", "file": "ore_node_empty.png", "w": 18, "h": 18, "slices": 8, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAAASCAYAAAC0PldrAAABGElEQVR4nO2ZPQrCMBzFo3gEEZGeQjo4Sg/gXJwcnRw9hKOTo2dwLuI5ilMoIuIdKg4praTpR2KaNO83JYG86fF4/4QQAADoigFbBKtt+n49G10eT6bkejllGibqgP8yym/mvt/oMqUJ99w0nc3ukCbJo3DmeTNyPu4bmc00HeMM1GeC5aKwj++Um3RVKWaaThmqdKpwxkAi8klXlmI26oTrMFtH0a21DktMXkoOW6sCp/hNTAYMBKSAgYAUznQgVlJN0dFBHN+V6IimQycMVHc8riqsunSoRHHWjRMGEr2/sHL4TZa6Y64qHR6qRm1dD6pOGUg0TXSlYzso0UAK5xLIphJsnYFUlTdTS6CqvyYb/6wAAID0jg/uW6qIFllqUwAAAABJRU5ErkJggg=="}, {"key": "herb_patch_full", "title": "Herb Patch (Full)", "category": "3. Stations, Resource Nodes & Buildings", "file": "herb_patch_full.png", "w": 16, "h": 16, "slices": 10, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAQCAYAAACRBXRYAAABrElEQVR4nGNgGAWjYBSMgpEKGGGMBDeL/4/e/CBKk5wIB8OCXSfgeqmh36Ag6f+nR1+I0s8nx8NwYcK8YaV/pAIWZI6TngRRmu48+4BVnFL9Gk5SROl/ducTTfQH5BGnf98G2uj3mZLw/8UN/IlYQoOHYUvOAqyJd0fNtf/n7lyC89eJrCFbv5GKHoNHixZJmYQc/SgJcBQMPLALkcErf+sK9swLA0kRAXD2G4ETYLpXhw0u9vbCFQYRIvRfOHMPYc4er//HzkDstTIRYBBx2cZILf2jCXAUEAV8U2zgCZia+kcT4ChAAcglFz3AaAIcRmCKRBeDmoAA2frxtdmIKflIbTOCwGgCHAGg+MovOPvWDTGS9eNr8xGvfxtWudEEOMxAL1KHA5b4yj50wPkXXtxj2MKwAKd+bB0GUnq3pOofTYCjgKgOA7beLTX0MxE0bRSMAhqC0RJwkIFbBMb5CAGMzgKLGsk9W2wdDlr1jlmImaEgFlCqH9cMBb3045qhIBbcIG+IDA5wzVCQoh9zkHkbQx/DBIo6HKT0brF1OMjpHY+CUTAKRgHDsAcA4tTpEgzOcHAAAAAASUVORK5CYII="}, {"key": "herb_patch_empty", "title": "Herb Patch (Empty)", "category": "3. Stations, Resource Nodes & Buildings", "file": "herb_patch_empty.png", "w": 16, "h": 16, "slices": 6, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAQCAYAAADpunr5AAAA/0lEQVR4nGNgGAWjYCQDRhgjwc3i/6M3P4jSJCfCwbBg1wm4XmroH6mABZnjpCdBlKY7zz5gFadUv0FB0v9Pj77g1csnx8NwYcI8Rlro95mS8P/FjS8MEho8DFtyFpCcQMjRjxIBgwFoOEnhlX925xNN9duFyDDcuvKB7MAlVT8TXteMQHALS+AhBy4lAJv+QZcDBhIQKjbwRQ4x+rGB0QggEpATuMToHy2CBhiM5gAiAC1bR6M5AEtgmeSE/AfR5FTApOofjQAsAFtgEaqACekfMkXQMwLtdFL0S6nwkWUGemDTqgLGGIogxVBsQxEqUgJE94RHhyJGwShgGAUMAEiwkEfFIrLkAAAAAElFTkSuQmCC"}, {"key": "shop_counter", "title": "Shop Display Counter", "category": "3. Stations, Resource Nodes & Buildings", "file": "shop_counter.png", "w": 20, "h": 20, "slices": 16, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAAUCAYAAAD8+OT/AAAB3UlEQVR4nO3av0sCYRzH8cdoCIdwcBCRcGiIkEaREIdwuFkkwr8goqI5GhyiPyH6EyKk2UEaxEEOJxFziJA4osFBGqLt4hRLubs8T8187v1a/HHeR3k4vj7PfR8hAAAAAADwBN/gyX4qrmudD1chkaBf3JXV76x55BlujhS93u6aPr8TDYjD66LvIpPS69rn6LHImri8L5uyyGP8XF2ckMrq8ItkLOQqpP32bvn+rPMMufSm6b3GU+fneGr0OxvP5oJJHuMHGFYYBgBeRQEE4FkjS+BlMLzctTw+ZslL3nKPHzC3Jkg0tO76np1VE2SWecAi2TXgnBg06eaZB8lngOfZlN56dddV3gr7xVVhtBNMHuM3yfVi14CbZlY76zxIXAANmd2wq/OaNv+05DF+k1wvy6B5m9ZL1f7vTycCYvugZCrkhfieXu32JxOJgF9k1QefzHnSFEAA452cxnqPj6rWe1SKef2l0hYbyagoKvlegTiO9ScTNa3riTw7dIEBD8idKeRZYAYISGYwExpWqbWkzZsGBRCQiNU9MKtloJOl5SLznLLLK8pYAGd9c5o8xs+Lfmsq/Js8Vfz9PsBpgtgHCJkZ+/amOd9qH2BsM+h6Gwz7AAEAAAAAgHDuC0hqAdSfmcZSAAAAAElFTkSuQmCC"}, {"key": "gate_wood", "title": "Mosswood Archway Gate", "category": "3. Stations, Resource Nodes & Buildings", "file": "gate_wood.png", "w": 18, "h": 18, "slices": 22, "footprint": [1, 1], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYwAAAASCAYAAABIIunNAAABpUlEQVR4nO3aP0vDQBzG8YuIiDg4SsnQQaSTg4OISCniIOIkxcGpYxFxdPAFdHCUIh37ApykiKM4OjhIkRKCiITi4OAgIi6RiIkNJs0l/WOSfj9Tmjz9tdxd70iuQgAAAAAAAAAAAAAAAABAmin2Qeng2DSMtnNBVTOifnLoXB/1DIDBqO1tmHePr5Heu5CdEeXTSyWOdSxHxbzZar+LMHKZKVE5u3bNP/2q06vxzhdrhWXnWNOfPN8wqpnODuvWEUE56tA+jJ+/v4vd9TkRRVN/EXGuY9leyYgw7n0Wq2xlNVQdUb31PL1VLZnPrTepErO5adHYryueCwa6szver0Nlc9ShfRg/+E/5oiqV05ruOWxsQN8HAJAy3GGEEHRnIZujznDaB8kaz0jYguH3fD/pmX6Q3TwKylFneO3zoZVM63hy/lyJmotjnaXCzvf1myv/NgjKxW0cej37j2KQdWoT7r2I8ufvH2XCLJQXqnt/ZNPQpeosNh6kcs7n+pzv3JMA8MOaeO3Jt5dc3OpYC4G9GHQjmwMAAAAAAAAAAAAAABBp9wXaE1KpV3VkIgAAAABJRU5ErkJggg=="}, {"key": "guild_hall", "title": "Adventurer Guild Hall", "category": "3. Stations, Resource Nodes & Buildings", "file": "guild_hall.png", "w": 32, "h": 32, "slices": 36, "footprint": [4, 4], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABIAAAAAgCAYAAABq+wOnAAAE4klEQVR4nO3dQWgUZxgG4FnpoXgIIiISlhBCCCWUIkFKKlIkSJEepEgpbSiSo5Q25JSDBykeFHIKoYjHRYoWKT2IBykipUgJHop4SCUssixLEBEJoUjpZYpblCQ72d3ozszu/s9z2WRndt7Jl3+W7Jd/ZqIIAAAAAAAAAAAAAAAAgC5VePXFzOxCXKutZRJaLA5GpaX519ny868/ABCeyTOL8fNaOZOs/cXRaPnqXKGb8gEgJO9s/mbq+GQmoavlauLz8vOtPwAQnompTzPJqayudl1+3g2ovPMBCLgBBFOnzsbPnj6pF2L266MdKcjSj3/UHw8cPBTdvXml6R8e8tU/5PF37vOP40drL6I0vDe4N7r48+9dnZ93/eWrf8jjL2QaYBpgAKHQAKLBxJEj9cfp6c86Up17j/6tP1artbbWl6/+IY+/00cHozSsVNZ7Ij/v+stX/5DHH2HSANMAA8KhAQQAAARJA0wDDEKiAcQWP5w/HQ2PDHe0KpcvfFF/rDyuROM3rzRdV776hzz+Qpd3/eWrf8jjDwiTBpgGGGHRAAIAACA4ITfACNOevHcAusnIwLVcty0/3/oTNsdf2O9/AAD9zgwgAAAAgE0mzyzGz1ucJri/OBotX50r9Eq+BhAAAACJPhjYaFqZhxsDqVZOfr71n5ldiGu1tcRlxeJgVFqaL/Rz/kSL0/TSPr2u0/kaQAAAAECiqeOTic+vlqtB5PcTDSAAAADI2PXpGy3XuXTr5Ftv46PvDyc+v/LTifjO8nrT1/49MrTjsrHRoWhp7kjc7PUnJvdF41/eSXWWTgiub/s9f3Xt/zt97pYGEGzyeGM6Gj6Q3rajqNRyHfn51Z+wOf7Cfv8BgBB9N/t+0+WXbr3d6/+6X3uT3SIl7gIGAAAA0Oc0gKCLbkMs322gyY/jL+z3PwCAfucUMAAAAMhYO9dxaXUXtPauBZN8p6h2rs0zMzsev7zWT+JWy9WoMFJyfZ8MvOk1f7bTAAIAAAC68m5beef3Ew0gAAAAEj3cGMi1MvLzrX9pab4Qcn5lNXn2VK/SAAIAAADYZPnqXCHv/OUOb9NFoKHhVsH5bVt+vvUnbI6/sN//AAD6nRlAAAAABKffTu+BVjSA2OLbC79EQ0PF+teXL3TmSuPfnL9Rf6xWay3Xla/+IY+/0OVdf/nqH/L4A8IUcgOkH0/vgVY0gAAAgCBpgORHAwSypwFEg1f/Kaw8rjQsWyjdjw4+/S2xak8PHo/mZz7ccXu9lr/n2cWGa0i0kz8ycG3b9t6V34P1z2v8rVTWd1y2duiTpvmDT37dVVY35reqfzNpH/8vDY8MJ77u1f6mefzLz67+SeOvnfrvtL1eySdMGiD50QABsvZ62tvM7EI8NjqUSehqudpwOzf5+da/XVOnzsYH1v9MXPZs30R09+aVVKdSyld/4y/s42/v0LHEZS+q91LPf+nwyXNxcXR8y3O18kr04PbFTKaRy1f/To+/yTOL8fDYWJRVo2H7KRfdkN/u63faz900ULrt5wcgLGYAsSvNP2A1/+98J8hXf+Mv7OPv8Mn9iR/WHtxOv/mz+QN3nhaOlbZ8P11unPkkX/37cQbITvv5Ng2U3TRE/kmhAWkGCAC5zQDKMjhpBlDo+b0wAwgAAAAAAAAAAAAAAACIMvQfYvYre594580AAAAASUVORK5CYII="}, {"key": "tavern", "title": "Warm Amber Tavern", "category": "3. Stations, Resource Nodes & Buildings", "file": "tavern.png", "w": 32, "h": 32, "slices": 36, "footprint": [4, 4], "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABIAAAAAgCAYAAABq+wOnAAAETklEQVR4nO3dQUscZwAG4LEEKx6CFClSRHIIJRQpEkRCCSIiUkqR0IOVVnooPYiH/IH22v6AHsRD6UlK6qEEKaUEEZEiQXKQIiUUCbLsYQlSxEOxUrLF1UjWXYdsun4z7vc8IDs7O7uvfs4s67vfrEkCAAAAAAAAAAAAAAAAQE61PV8YnZgp7z4tBQntfrMnWVmaP82Wn/34AwDxuT89XH5U+DtI1mBfZ3JnYa0tT/kAEJMrL165OTgYJLRQKNZdLz/b8QcA4vPFeE+QnM3H+7nLz7qAyjofgIgLIJgcHioXd49fiPR0daQOSGnvoKHters7k8W1jdQXHvKNv/0vH8ff7OxHqY87N/dTQ9vJN/72v3wffzFTgCnAAC6z884mqnfmjwKIGrf7j9+Je7evM3V0fj95wfCy2+2U6r/zJ9/42//yd/xNfTaV/rhr6w1tJ9/42//yf/w1Q3G7vWZd7/VD+Tke/2YWYGn5IWaANZrf7BlYe/uv1azruvos2AywRvObbX5spLx1UmQf6e/uTGaWV4OVz/KNf8z73806ZxPVO/NHAQQAAERJAda8Aqq/943K14u+Gh4shyrAGs2/CFMDvafLW8W/LjpOvvFvmAIIAAAgQs0twM5//DAzwBrLv4gC6uz10AVYI/nESQEEAABAdGIuwIiTAggAAAD4X7I47U1+YxRAAAA0RcgPfJZv/O1/jj/PP/l5/g35gcfyX50CCAAAAOASOvuv3tPU/q9AAAAAAFqKGUAAAAAQ0A+Fg2T9sD1I1k7pIEgO+WcGEAAAAECLUwABAAAAtDgFEAAAAECL8xlAAAAAENAnfR3JwI2OIFmb7YfJYpAk8s4MIAAAAIAWpwACAAAAaHEKIAAAAIAWpwACAAAAaHE+BBoAAIDobD7ez/pbgKAUQAAAABGKuQC5s7DWFnM+cVIAAQAAUVKAZEcBAuEpgKixUzp+J+DKs8O6o/PBe32Vy2tvXa1a/8t6oe72O08PLl3+jz9P1L3ty88fpOZ//f14zX0+TZLk4w+X5Bv/l97/8nD8FZ9s1729uLJYuZy41VO5fPjdN5XL3tHJ1MdrVv6rbtdo/r8bd2tuK3XfTc3v2f22qfnTC4OV5YXpR1HmnxUyP+v9L6t84qQAyY4CBAjtdNrZ6MRMua+vN0hooVBMVpbmq6a8yc92/BsxP/t+ud76mblfg0xjDJF/sDxWN6NjbLktLT/tfvIv1/i/PjRSte6fjdWXyj/vfkmT5OH467/eXbVua3s3WH5MhkYmK7/rjdXFthjzCeP+9HB54EZ1oXyRRcPZP3jzkJ8ElLefH4C4KIBOxF5AATz3x72x8vLDvaoBGbvVlbwz1bwiK03s+X/ulMoPVjeSmanblevz935LxkeGkrev9QR93lYAxUEBAgCRngJ2VAxkKfZ8gLw4KjzkZ+eo/HlSOqxZhmbLekZI1vkAAAAAAAAAAAAAkFwK/wEyxZYnc3bEuwAAAABJRU5ErkJggg=="}];
+let playing = false;
+let angleDeg = 60;
+let squash = 0.55;
+let spacing = 0.8;
+let zoom = 6;
+const cards = [];
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+function extractSlices(img, count, w, h) {
+  const c = document.createElement("canvas");
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const out = [];
+  for (let z = 0; z < count; z++) out.push(ctx.getImageData(z * w, 0, w, h).data);
+  return out;
+}
+
+function renderStack(slices, w, h, rad, sq, sp) {
+  const count = slices.length;
+  const diag = Math.ceil(Math.hypot(w, h)) + 8;
+  const liftMax = Math.ceil((count - 1) * sp);
+  const bw = diag + 12;
+  const bh = Math.ceil(diag * sq) + liftMax + 16;
+  const cx = bw >> 1;
+  const baseY = bh - Math.ceil(diag * sq * 0.5) - 6;
+  const ca = Math.cos(rad), sa = Math.sin(rad);
+  const body = new Uint8ClampedArray(bw * bh * 4);
+  const out = new Uint8ClampedArray(bw * bh * 4);
+
+  for (let z = 0; z < count; z++) {
+    const sl = slices[z];
+    const liftY = Math.round(z * sp);
+    for (let py = 0; py < bh; py++) {
+      const dy = (py - (baseY - liftY)) / sq;
+      for (let px = 0; px < bw; px++) {
+        const dx = px - cx;
+        const sx = Math.round(dx * ca + dy * sa + (w - 1) * 0.5);
+        const sy = Math.round(-dx * sa + dy * ca + (h - 1) * 0.5);
+        if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+          const si = (sy * w + sx) * 4;
+          if (sl[si + 3] > 0) {
+            const bi = (py * bw + px) * 4;
+            body[bi] = sl[si]; body[bi+1] = sl[si+1]; body[bi+2] = sl[si+2]; body[bi+3] = 255;
+          }
+        }
+      }
+    }
+  }
+  for (let py = 1; py < bh - 1; py++) {
+    for (let px = 1; px < bw - 1; px++) {
+      const i = (py * bw + px) * 4;
+      if (body[i + 3] > 0) {
+        out[i] = body[i]; out[i+1] = body[i+1]; out[i+2] = body[i+2]; out[i+3] = 255;
+      } else if (
+        body[((py-1)*bw+px)*4+3] > 0 || body[((py+1)*bw+px)*4+3] > 0 ||
+        body[(py*bw+(px-1))*4+3] > 0 || body[(py*bw+(px+1))*4+3] > 0
+      ) {
+        out[i] = 24; out[i+1] = 28; out[i+2] = 36; out[i+3] = 255;
+      }
+    }
+  }
+  const c = document.createElement("canvas");
+  c.width = bw; c.height = bh;
+  c.getContext("2d").putImageData(new ImageData(out, bw, bh), 0, 0);
+  return c;
+}
+
+async function init() {
+  const grid = document.getElementById("grid");
+  for (const item of ITEMS) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <canvas width="220" height="180"></canvas>
+      <h3>${item.title}</h3>
+      <p class="meta">${item.file} • ${item.w}x${item.h}x${item.slices} • tile ${item.footprint.join("x")}</p>
+    `;
+    grid.appendChild(el);
+    const img = await loadImage(item.src);
+    const canvas = el.querySelector("canvas");
+    cards.push({
+      item,
+      canvas,
+      ctx: canvas.getContext("2d"),
+      slices: extractSlices(img, item.slices, item.w, item.h),
+    });
+  }
+  requestAnimationFrame(loop);
+}
+
+function loop() {
+  if (playing) {
+    angleDeg = (angleDeg + 0.75) % 360;
+    document.getElementById("angleSlider").value = Math.round(angleDeg);
+    document.getElementById("angleVal").textContent = Math.round(angleDeg) + "°";
+  }
+  const rad = angleDeg * Math.PI / 180;
+  for (const c of cards) {
+    const { item, canvas, ctx, slices } = c;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const buf = renderStack(slices, item.w, item.h, rad, squash, spacing);
+    let sc = item.w >= 28 ? Math.max(2, zoom - 3) : (item.slices >= 28 ? Math.max(2, zoom - 2) : Math.max(2, zoom - 1));
+    const dw = buf.width * sc, dh = buf.height * sc;
+    ctx.drawImage(buf, Math.round((canvas.width - dw) * 0.5), Math.round((canvas.height - dh) * 0.5 + 8), dw, dh);
+  }
+  requestAnimationFrame(loop);
+}
+
+document.getElementById("togglePlay").addEventListener("click", (e) => {
+  playing = !playing;
+  e.target.textContent = playing ? "Pause" : "Rotate 360°";
+});
+document.getElementById("angleSlider").addEventListener("input", (e) => {
+  playing = false;
+  document.getElementById("togglePlay").textContent = "Rotate 360°";
+  angleDeg = Number(e.target.value);
+  document.getElementById("angleVal").textContent = angleDeg + "°";
+});
+document.getElementById("squashSlider").addEventListener("input", (e) => {
+  squash = Number(e.target.value) / 100;
+  document.getElementById("squashVal").textContent = squash.toFixed(2);
+});
+document.getElementById("spacingSlider").addEventListener("input", (e) => {
+  spacing = Number(e.target.value) / 100;
+  document.getElementById("spacingVal").textContent = spacing.toFixed(2) + "x";
+});
+document.getElementById("zoomSlider").addEventListener("input", (e) => {
+  zoom = Number(e.target.value);
+  document.getElementById("zoomVal").textContent = zoom + "x";
+});
+
+init();
+</script>
+</body>
+</html>

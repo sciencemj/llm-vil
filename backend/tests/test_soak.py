@@ -52,7 +52,7 @@ async def test_thirty_day_soak(config, tmp_path):
     assert m["max_starving_minutes"] < 1440
     # 0 permanent resource extinctions
     assert min_stats["trees_mature"] >= config.economy.forest_reserve
-    assert s["world"]["trees_total"] >= 12 and min_stats["bushes_total"] == 4
+    assert s["world"]["trees_total"] >= 12 and min_stats["bushes_total"] == 6
     assert min_stats["seeds_total"] + min_stats["plots_growing"] > 0
     assert s["world"]["plots_growing"] > 0
     # active economy & social life
@@ -65,8 +65,19 @@ async def test_thirty_day_soak(config, tmp_path):
     assert s["relationship_magnitude"] > 1.0
     # M4: gossip spreads organically (no God rumors in this run) and coins circulate
     assert m["hearsay_shared"] > 0
-    assert s["world"]["coins_total"] < 500, s["world"]["coins_total"]
     assert m["trades"] > 30
     assert all(a.goals for a in e.agents.values())
     assert store.count("checkpoints") >= 4
+    # Phase 2: 10-profession supply chain, P2P shops, combat, guild & bounded coin supply
+    assert m["shop_sales"] > 50
+    assert m["crafts_hearth"] > 0 and m["crafts_bakery_oven"] > 0
+    assert m["crafts_cauldron"] > 0 and m["crafts_kiln"] > 0 and m["crafts_forge_anvil"] > 0
+    assert m["ore_mined"] > 0 and m["herbs_gathered"] > 0
+    assert m["monsters_defeated"] > 20
+    assert m["bounties_completed"] > 0 and m["drops_sold"] > 0
+    assert m["tools_repaired"] > 0
+    assert m["requests_posted"] > 0 and m["p2p_trades"] > 0
+    # bounded money: village tax + guild recycling keep supply and inequality in check
+    assert s["world"]["coin_supply"] < 1500, s["world"]["coin_supply"]
+    assert m["coin_supply_max"] < 1600 and m["coin_gini_milli"] < 700, m["coin_gini_milli"]
     store.close()

@@ -12,10 +12,18 @@ interface Drawable {
   x: number;
   y: number;
   actorId?: string;
+  obj?: WorldObject;
 }
 
 interface ScreenActor {
   id: string;
+  x: number;
+  y: number;
+  top: number;
+}
+
+interface ScreenObj {
+  obj: WorldObject;
   x: number;
   y: number;
   top: number;
@@ -26,11 +34,23 @@ const ROUTINE_ICON: Record<string, string> = {
   chop_wood: "🪓",
   forage: "🫐",
   cook_meal: "🍲",
+  craft: "🔨",
   eat_food: "🍽️",
+  use_potion: "🧪",
   store_or_take: "📦",
   visit_and_talk: "💬",
   post_or_fulfill_order: "📜",
+  post_request: "📋",
+  post_bounty: "🎯",
   trade: "🪙",
+  stock_shop: "🏪",
+  buy_from_shop: "🛍️",
+  run_stall: "🏪",
+  mine: "⛏️",
+  gather_herb: "🌿",
+  hunt: "⚔️",
+  sell_drops: "💰",
+  repair_tool: "🔧",
   sleep: "💤",
   rest: "☕",
   wander: "🚶",
@@ -41,14 +61,32 @@ const ROUTINE_KO: Record<string, string> = {
   chop_wood: "장작을 패야겠어",
   forage: "산딸기 따러 가자",
   cook_meal: "뭘 좀 만들어 먹을까",
+  craft: "작업대에서 제작해야지",
   eat_food: "배고파…",
+  use_potion: "물약을 마셔야겠어",
   store_or_take: "상자 정리",
   visit_and_talk: "이야기하러 가볼까",
   post_or_fulfill_order: "게시판 주문!",
+  post_request: "물품 의뢰를 올려야지",
+  post_bounty: "현상금을 걸어두자",
   trade: "장터에 가볼까",
+  stock_shop: "가게에 물건을 진열하자",
+  buy_from_shop: "가게에서 장을 보자",
+  run_stall: "가게를 지키자",
+  mine: "채석장에서 광석을 캐자",
+  gather_herb: "약초를 채집하러 가자",
+  hunt: "이끼숲으로 사냥 가자!",
+  sell_drops: "길드에 전리품을 팔자",
+  repair_tool: "대장간에서 장비를 수리하자",
   sleep: "이제 자야지",
   rest: "잠깐 쉬자",
   wander: "산책이나 할까",
+};
+
+const MONSTER_LABEL: Record<string, string> = {
+  slime: "슬라임",
+  boar: "멧돼지",
+  goblin: "고블린",
 };
 
 /** Day/night multiply tint keyed by sim minute. */
@@ -108,8 +146,18 @@ export function assetKeyFor(o: WorldObject): string {
     }
     case "berry_bush":
       return o.state === "ripe" ? "berry_bush_full" : "berry_bush_empty";
+    case "ore_node":
+      return o.state === "rich" ? "ore_node_full" : "ore_node_empty";
+    case "herb_patch":
+      return o.state === "ripe" ? "herb_patch_full" : "herb_patch_empty";
+    case "shop_counter":
+    case "guild_counter":
+      return "shop_counter";
+    case "monster":
+      return `monster_${String(o.data.species ?? "slime")}`;
     default:
-      return o.kind; // hearth, chest, bed, notice_board, trading_stall, well
+      // hearth, chest, bed, notice_board, trading_stall, well, bakery_oven, forge_anvil, kiln, cauldron, gate_wood, guild_hall, tavern
+      return o.kind;
   }
 }
 
@@ -338,8 +386,9 @@ export class SceneRenderer {
     // sprites, depth-sorted by camera-yaw-aware depth (x*sin + y*cos)
     const items: Drawable[] = [];
     for (const o of store.objects.values()) {
+      if (o.kind === "monster" && o.state === "defeated") continue;
       const p = cam.project(o.pos.x + 0.5, o.pos.y + 0.5);
-      items.push({ depth: p.depth, key: assetKeyFor(o), angle: cam.angleDeg, x: p.sx, y: p.sy });
+      items.push({ depth: p.depth, key: assetKeyFor(o), angle: cam.angleDeg, x: p.sx, y: p.sy, obj: o });
     }
     for (const c of this.cottageSpots()) {
       const p = cam.project(c.x, c.y);
@@ -359,6 +408,7 @@ export class SceneRenderer {
     }
     items.sort((a, b) => a.depth - b.depth);
     const screenActors: ScreenActor[] = [];
+    const screenObjs: ScreenObj[] = [];
     for (const it of items) {
       const sx = cx + it.x;
       const sy = cy + it.y;
@@ -368,6 +418,9 @@ export class SceneRenderer {
       const dy = Math.round(sy - img.anchorY);
       lctx.drawImage(img.canvas, dx, dy);
       if (it.actorId) screenActors.push({ id: it.actorId, x: sx * s, y: sy * s, top: dy * s });
+      if (it.obj && (it.obj.kind === "monster" || it.obj.kind === "shop_counter" || it.obj.kind === "guild_counter")) {
+        screenObjs.push({ obj: it.obj, x: sx * s, y: sy * s, top: dy * s });
+      }
     }
     this.screenActors = screenActors;
 
@@ -383,6 +436,9 @@ export class SceneRenderer {
     ctx.globalCompositeOperation = "source-over";
     this.drawWeather(ctx, W, H, dt);
 
+    // Phase 2 object overlays (shop stock indicators & Mosswood monster badges)
+    for (const so of screenObjs) this.drawObjectBadge(ctx, so, now);
+
     // bubbles & name tags (full-res text)
     // replay shows full lines unless it is auto-playing at >= 4x
     const condensed = store.replaying ? store.replayCondensed : store.clock.speed >= 4;
@@ -390,6 +446,43 @@ export class SceneRenderer {
       const a = store.actors.get(sa.id);
       if (a) this.drawLabel(ctx, a, sa, now, condensed);
     }
+  }
+
+  private drawObjectBadge(ctx: CanvasRenderingContext2D, so: ScreenObj, now: number): void {
+    const dpr = this.dpr;
+    const o = so.obj;
+    if (o.kind === "monster") {
+      const species = String(o.data.species ?? "slime");
+      const engaged = o.state === "engaged";
+      const label = engaged ? `⚔️ ${MONSTER_LABEL[species] ?? species}` : (MONSTER_LABEL[species] ?? species);
+      const fontPx = Math.round(10 * dpr);
+      ctx.font = `700 ${fontPx}px "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const bw = ctx.measureText(label).width + 8 * dpr;
+      const pulse = engaged ? 0.8 + 0.2 * Math.sin(now / 120) : 0.72;
+      ctx.fillStyle = engaged ? `rgba(196, 48, 42, ${pulse})` : "rgba(38, 28, 36, 0.68)";
+      roundRect(ctx, so.x - bw / 2, so.top - fontPx * 1.4, bw, fontPx * 1.35, 5 * dpr);
+      ctx.fill();
+      ctx.fillStyle = engaged ? "#fff5d6" : "#f0d4d4";
+      ctx.fillText(label, so.x, so.top - fontPx * 0.72);
+      return;
+    }
+    const stock = (o.data.stock ?? {}) as Record<string, number>;
+    const total = Object.values(stock).reduce((acc, n) => acc + (Number(n) || 0), 0);
+    if (total <= 0) return;
+    const isGuild = o.kind === "guild_counter";
+    const fontPx = Math.round(9.5 * dpr);
+    ctx.font = `700 ${fontPx}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const tag = `${isGuild ? "🛡️" : "🏪"}${total}`;
+    const bw = ctx.measureText(tag).width + 7 * dpr;
+    ctx.fillStyle = isGuild ? "rgba(56, 86, 138, 0.82)" : "rgba(44, 110, 66, 0.82)";
+    roundRect(ctx, so.x - bw / 2, so.top - fontPx * 1.3, bw, fontPx * 1.3, 5 * dpr);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(tag, so.x, so.top - fontPx * 0.65);
   }
 
   private drawWeather(ctx: CanvasRenderingContext2D, W: number, H: number, dt: number): void {
@@ -430,13 +523,29 @@ export class SceneRenderer {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const nameY = sa.y + 10 * dpr;
-    const label = a.name;
+    const prefix = a.fainted ? "💫 " : a.activity === "fight" ? "⚔️ " : "";
+    const label = `${prefix}${a.name}`;
     const nw = ctx.measureText(label).width + 10 * dpr;
-    ctx.fillStyle = a.actor_id === this.selectedId ? "rgba(255, 228, 120, 0.95)" : "rgba(20, 24, 30, 0.72)";
+    ctx.fillStyle = a.fainted
+      ? "rgba(180, 56, 56, 0.88)"
+      : a.actor_id === this.selectedId
+        ? "rgba(255, 228, 120, 0.95)"
+        : "rgba(20, 24, 30, 0.72)";
     roundRect(ctx, sa.x - nw / 2, nameY - fontPx * 0.75, nw, fontPx * 1.5, 6 * dpr);
     ctx.fill();
-    ctx.fillStyle = a.actor_id === this.selectedId ? "#2a2010" : "#fff";
+    ctx.fillStyle = a.actor_id === this.selectedId && !a.fainted ? "#2a2010" : "#fff";
     ctx.fillText(label, sa.x, nameY);
+
+    if (typeof a.hp === "number" && a.hp < 99.5) {
+      const barW = 28 * dpr;
+      const barH = 3.5 * dpr;
+      const bx = sa.x - barW / 2;
+      const by = nameY + fontPx * 0.9;
+      ctx.fillStyle = "rgba(20, 20, 20, 0.75)";
+      ctx.fillRect(bx, by, barW, barH);
+      ctx.fillStyle = a.hp < 35 ? "#e04848" : "#6ec85a";
+      ctx.fillRect(bx, by, barW * Math.max(0, Math.min(1, a.hp / 100)), barH);
+    }
 
     const b = a.bubble;
     if (!b) return;

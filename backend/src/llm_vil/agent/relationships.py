@@ -21,6 +21,8 @@ EVENT_DELTAS: dict[str, dict[str, float]] = {
     "declined_invite": {"affection": -0.02},
     "hearsay_theft": {"trust": -0.12},
     "saw_working": {"respect": 0.01, "familiarity": 0.005},
+    "shop_customer": {"trust": 0.02, "familiarity": 0.01},
+    "bounty_paid": {"respect": 0.04, "trust": 0.02},
 }
 APPRAISAL_CLAMP = 0.15
 SUMMARY_REFRESH_DELTA = 0.20

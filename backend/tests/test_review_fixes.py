@@ -140,17 +140,17 @@ async def test_pending_checkpoint_waits_for_quiescence(config, tmp_path):
 async def test_stale_validation_covers_known_but_unseen_targets(config):
     llm = GatedLLM({"routine": "tend_farm", "target": "my_plots"})
     e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=60.0))
-    e.world.apply("haneul", AtomicAction(kind="wake"))
-    view = e.world.perceive("haneul")
-    assert "plot_09" not in {o.id for o in view.objects}  # far outside radius 6
-    e._spawn("haneul", "choose_routine", "test")
+    e.world.apply("mina", AtomicAction(kind="wake"))
+    view = e.world.perceive("mina")
+    assert "plot_09" not in {o.id for o in view.objects}  # far outside perception radius
+    e._spawn("mina", "choose_routine", "test")
     await asyncio.sleep(0)
     e.world._set_state(e.world.objects["plot_09"], "tilled")
     llm.release.set()
-    await e.jobs["haneul"].task
+    await e.jobs["mina"].task
     e._harvest()
     assert e.metrics["stale_dropped"] == 1
-    assert e.triggers["haneul"]["choose_routine"] == "stale_view:plot_09"
+    assert e.triggers["mina"]["choose_routine"] == "stale_view:plot_09"
 
 
 async def test_merchant_toggle_bumps_stall(config):
@@ -269,7 +269,7 @@ def test_world_view_never_leaks_thief_identity(config):
         w.apply(aid, AtomicAction(kind="wake"))
     chest = w.objects["chest_haneul"]
     w.actors["doyun"].pos = (chest.pos[0], chest.pos[1] + 1)
-    for _ in range(3):  # empty the chest completely
+    for _ in range(chest.data["items"]["berry"]):  # empty the chest completely
         assert w.apply("doyun", AtomicAction(kind="take", target_id="chest_haneul",
                                              item="berry")).ok
         while w.actors["doyun"].action is not None:

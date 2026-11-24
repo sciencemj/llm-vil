@@ -8,6 +8,7 @@ agent state so a routine survives snapshot/restore mid-way.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,7 +33,8 @@ class KnownObject(Mutable):
     state: str
     owner: str | None = None
     name: str = ""
-    items: dict[str, int] = Field(default_factory=dict)  # chests: last-seen contents
+    items: dict[str, int] = Field(default_factory=dict)  # chests / shop stock: last seen
+    prices: dict[str, int] = Field(default_factory=dict)  # shop counters: last-seen prices
     last_seen: int = 0
     version: int = 0  # world object version when last seen
 
@@ -228,6 +230,233 @@ def _visit(c: RoutineChoice, p: dict[str, Any], ctx: RoutineContext) -> AtomicAc
     return AtomicAction(kind="move_to", target_id=c.target)
 
 
+# ---------------------------------------------------------------- Phase 2 executors
+MOVING_KINDS = frozenset({"monster"})
+COUNTER_KINDS = frozenset({"shop_counter", "guild_counter"})
+HP_RETREAT = 45.0
+
+
+def known_price(config: VillageConfig, known: KnownObject | None, item: str) -> int:
+    """Last-seen shop price, else the item's base value (what the world falls back to)."""
+    if known is not None and known.prices.get(item):
+        return int(known.prices[item])
+    it = config.items.get(item)
+    return max(1, it.value) if it else 1
+
+
+def price_band(config: VillageConfig, item: str) -> tuple[int, int]:
+    it = config.items.get(item)
+    v = max(1, it.value) if it else 1
+    s = config.shops
+    return max(1, math.floor(v * s.price_min)), max(1, math.ceil(v * s.price_max))
+
+
+def bounty_reward(config: VillageConfig, species: str) -> int:
+    mon = config.monsters.get(species)
+    return 8 + round((mon.power if mon else 0.0) * 40)
+
+
+def request_reward(config: VillageConfig, item: str, qty: int) -> int:
+    it = config.items.get(item)
+    v = max(1, it.value) if it else 1
+    return max(2, round(v * max(1, qty) * 1.25))
+
+
+def recipe_needs(inputs: dict[str, int], fuel: dict[str, int], fuel_any: list[str],
+                 inv: dict[str, int]) -> dict[str, int] | None:
+    """Agent-side mirror of the world's recipe check (inputs + fuel + one ``fuel_any``)."""
+    need = dict(inputs)
+    for item, n in fuel.items():
+        need[item] = need.get(item, 0) + n
+    if fuel_any:
+        f = next((f for f in fuel_any if inv.get(f, 0) >= need.get(f, 0) + 1), None)
+        if f is None:
+            return None
+        need[f] = need.get(f, 0) + 1
+    return None if any(inv.get(i, 0) < n for i, n in need.items()) else need
+
+
+def _repeat(p: dict[str, Any], ctx: RoutineContext, oid: str | None, action: AtomicAction,
+            times: int) -> AtomicAction | None:
+    """Issue ``action`` up to ``times`` (approaching first); a rejection ends the routine."""
+    if p.get("done", 0) >= max(1, times):
+        return None
+    step = _approach(ctx, oid, action) if oid else action
+    if step.kind != "move_to":
+        p["done"] = p.get("done", 0) + 1
+    return step
+
+
+def _craft(c: RoutineChoice, p: dict[str, Any], ctx: RoutineContext) -> AtomicAction | None:
+    recipe = ctx.config.recipes.get(c.item)
+    if recipe is not None and p.get("done", 0) and recipe_needs(
+        recipe.inputs, recipe.fuel, recipe.fuel_any, ctx.view.self_actor.inventory
+    ) is None:
+        return None  # ran out of ingredients: the batch is done
+    return _repeat(p, ctx, c.target, AtomicAction(kind="craft", target_id=c.target,
+                                                  item=c.item), min(3, max(1, c.qty)))
+
+
+def _stock_shop(c: RoutineChoice, p: dict[str, Any],
+                ctx: RoutineContext) -> AtomicAction | None:
+    phase = p.get("phase", 0)
+    inv = ctx.view.self_actor.inventory
+    k = ctx.known.get(c.target)
+    if phase == 0:
+        qty = min(max(1, c.qty), inv.get(c.item, 0))
+        if qty < 1:
+            return None
+        step = _approach(ctx, c.target, AtomicAction(kind="stock_shop", target_id=c.target,
+                                                     item=c.item, qty=qty))
+        if step.kind != "move_to":
+            p["phase"] = 1
+            p["before"] = (k.items.get(c.item, 0) if k else 0)
+        return step
+    if phase == 1:
+        p["phase"] = 2
+        # simple market-making: unsold piles get cheaper, sold-out goods dearer
+        before = p.get("before", 0)
+        lo, hi = price_band(ctx.config, c.item)
+        cur = known_price(ctx.config, k, c.item)
+        new = cur - 1 if before >= 6 else cur + 1 if before == 0 else cur
+        new = max(lo, min(hi, new))
+        if new != cur:
+            return AtomicAction(kind="set_prices", target_id=c.target, item=c.item, amount=new)
+    return None
+
+
+def _buy_from_shop(c: RoutineChoice, p: dict[str, Any],
+                   ctx: RoutineContext) -> AtomicAction | None:
+    return _once(p, ctx, c.target, AtomicAction(kind="buy_from_shop", target_id=c.target,
+                                                item=c.item, qty=max(1, c.qty)))
+
+
+def _gather(kind: str, action: str, ready: str, area: str, item: str):  # type: ignore[no-untyped-def]
+    def run(c: RoutineChoice, p: dict[str, Any], ctx: RoutineContext) -> AtomicAction | None:
+        have = ctx.view.self_actor.inventory.get(item, 0)
+        start = p.setdefault("start", have)
+        if have - start >= max(2, c.qty * 2) or p.get("done", 0) >= max(1, c.qty):
+            return None
+        if c.target in ctx.known and _state(ctx, c.target) == ready:
+            oid: str | None = c.target
+        else:
+            zone = c.target if ctx.config.area(c.target) else area
+            oid = _nearest(ctx, kind, (ready,), area=zone)
+            if oid is None:
+                oid = _nearest(ctx, kind, (ready,))
+        if oid is None:
+            return None
+        step = _approach(ctx, oid, AtomicAction(kind=action, target_id=oid))  # type: ignore[arg-type]
+        if step.kind != "move_to":
+            p["done"] = p.get("done", 0) + 1
+        return step
+    return run
+
+
+_mine = _gather("ore_node", "mine", "rich", "quarry", "iron_ore")
+_gather_herb = _gather("herb_patch", "gather_herb", "ripe", "pond", "herb")
+
+
+def _hunt(c: RoutineChoice, p: dict[str, Any], ctx: RoutineContext) -> AtomicAction | None:
+    """Walk into Mosswood, engage the nearest roaming monster (bounty species first)."""
+    me = ctx.view.self_actor
+    if me.needs.hp <= HP_RETREAT or p.get("fights", 0) >= max(1, c.qty):
+        return None
+    here = _pos(ctx)
+    species = c.item if c.item in ctx.config.monsters else None
+    seen = [o for o in ctx.view.objects if o.kind == "monster" and o.state == "roaming"]
+    if species and any(o.data.get("species") == species for o in seen):
+        seen = [o for o in seen if o.data.get("species") == species]
+    if c.target in {o.id for o in seen}:
+        seen = [o for o in seen if o.id == c.target]
+    if seen:
+        mon = min(seen, key=lambda o: (_dist(here, (o.pos.x, o.pos.y)), o.id))
+        if _dist(here, (mon.pos.x, mon.pos.y)) <= 1:
+            p["fights"] = p.get("fights", 0) + 1
+            p["hops"] = 0
+            return AtomicAction(kind="fight", target_id=mon.id)
+        hops = p.get("chase", 0)
+        if hops >= 8:
+            return None
+        p["chase"] = hops + 1
+        return AtomicAction(kind="move_to", target_id=mon.id)
+    hops = p.get("hops", 0)
+    if hops >= 5:
+        return None
+    p["hops"] = hops + 1
+    return AtomicAction(kind="move_to", target_pos=_area_tile(ctx, "mosswood", ("hunt", hops)))
+
+
+def _sell_drops(c: RoutineChoice, p: dict[str, Any],
+                ctx: RoutineContext) -> AtomicAction | None:
+    inv = ctx.view.self_actor.inventory
+    sold = p.setdefault("sold", [])
+    items = [c.item] if c.item not in ("none", "all") else []
+    items += [i for i, n in sorted(inv.items())
+              if n > 0 and (it := ctx.config.items.get(i)) is not None and it.drop
+              and i not in items]
+    guild = ctx.known.get(c.target)
+    cap = ctx.config.shops.guild_stock_cap
+    for item in items:
+        room = cap - (guild.items.get(item, 0) if guild else 0)
+        if item in sold or inv.get(item, 0) < 1 or room < 1:
+            continue
+        step = _approach(ctx, c.target, AtomicAction(kind="sell_drops", target_id=c.target,
+                                                     item=item, qty=min(inv[item], room)))
+        if step.kind != "move_to":
+            sold.append(item)
+        return step
+    return None
+
+
+def _post_bounty(c: RoutineChoice, p: dict[str, Any],
+                 ctx: RoutineContext) -> AtomicAction | None:
+    return _once(p, ctx, c.target, AtomicAction(
+        kind="post_bounty", target_id=c.target, item=c.item, qty=1,
+        amount=bounty_reward(ctx.config, c.item)))
+
+
+def _post_request(c: RoutineChoice, p: dict[str, Any],
+                  ctx: RoutineContext) -> AtomicAction | None:
+    qty = max(1, min(5, c.qty))
+    return _once(p, ctx, c.target, AtomicAction(
+        kind="post_request", target_id=c.target, item=c.item, qty=qty,
+        amount=request_reward(ctx.config, c.item, qty)))
+
+
+def _repair_tool(c: RoutineChoice, p: dict[str, Any],
+                 ctx: RoutineContext) -> AtomicAction | None:
+    return _once(p, ctx, c.target, AtomicAction(kind="repair_tool", target_id=c.target,
+                                                item=c.item))
+
+
+def _use_potion(c: RoutineChoice, p: dict[str, Any],
+                ctx: RoutineContext) -> AtomicAction | None:
+    return _once(p, ctx, None, AtomicAction(kind="eat", item=c.item))
+
+
+def _run_stall(c: RoutineChoice, p: dict[str, Any], ctx: RoutineContext) -> AtomicAction | None:
+    """Merchant: buy a lot from the travelling caravan, then shelve it in the own shop."""
+    phase = p.get("phase", 0)
+    if phase == 0:
+        step = _approach(ctx, c.target, AtomicAction(kind="trade", target_id=c.target,
+                                                     item=c.item, op="buy",
+                                                     qty=max(1, c.qty)))
+        if step.kind != "move_to":
+            p["phase"] = 1
+        return step
+    if phase == 1 and ctx.spec.shop_id:
+        inv = ctx.view.self_actor.inventory
+        if inv.get(c.item, 0) < 1:
+            return None
+        step = _approach(ctx, ctx.spec.shop_id, AtomicAction(
+            kind="stock_shop", target_id=ctx.spec.shop_id, item=c.item, qty=inv[c.item]))
+        if step.kind != "move_to":
+            p["phase"] = 2
+        return step
+    return None
+
+
 def resolve_targets(choice: RoutineChoice, ctx: RoutineContext) -> list[str]:
     """Known world objects a routine choice will act on (for stale-view validation)."""
     if choice.routine == "tend_farm":
@@ -239,7 +468,15 @@ def resolve_targets(choice: RoutineChoice, ctx: RoutineContext) -> list[str]:
     if choice.routine == "forage" and choice.target not in ctx.known:
         bid = _nearest(ctx, "berry_bush", ("ripe",))
         return [bid] if bid else []
-    return [choice.target] if choice.target in ctx.known else []
+    if choice.routine in ("mine", "gather_herb") and choice.target not in ctx.known:
+        kind, ready = ("ore_node", "rich") if choice.routine == "mine" else ("herb_patch", "ripe")
+        oid = _nearest(ctx, kind, (ready,))
+        return [oid] if oid else []
+    k = ctx.known.get(choice.target)
+    # counters change on every sale and monsters wander: the world re-validates those
+    if k is None or k.kind in COUNTER_KINDS or k.kind in MOVING_KINDS:
+        return []
+    return [choice.target]
 
 
 EXECUTORS = {
@@ -255,6 +492,18 @@ EXECUTORS = {
     "sleep": _sleep,
     "rest": _rest,
     "wander": _wander,
+    "craft": _craft,
+    "stock_shop": _stock_shop,
+    "buy_from_shop": _buy_from_shop,
+    "mine": _mine,
+    "gather_herb": _gather_herb,
+    "hunt": _hunt,
+    "sell_drops": _sell_drops,
+    "post_bounty": _post_bounty,
+    "post_request": _post_request,
+    "repair_tool": _repair_tool,
+    "use_potion": _use_potion,
+    "run_stall": _run_stall,
 }
 
 

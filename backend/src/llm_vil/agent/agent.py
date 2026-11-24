@@ -32,7 +32,17 @@ from .replies import (
     TurnReply,
     flat_schema,
 )
-from .routines import KnownObject, RoutineContext, next_step, resolve_targets
+from .routines import (
+    COUNTER_KINDS,
+    MOVING_KINDS,
+    KnownObject,
+    RoutineContext,
+    known_price,
+    next_step,
+    recipe_needs,
+    request_reward,
+    resolve_targets,
+)
 
 COOKED = ("turnip_soup", "berry_stew", "bread")
 RAW_FOOD_ORDER = ("turnip", "berry")
@@ -77,7 +87,36 @@ EVENT_TEXT = {
     "order_fulfilled": "게시판 주문을 해결하고 돈을 받았다",
     "stored": "상자에 물건을 넣었다",
     "took": "상자에서 물건을 꺼냈다",
+    "crafted": "작업대에서 물건을 만들었다",
+    "mined": "광석을 캤다",
+    "gathered": "약초를 캤다",
+    "shop_stocked": "내 가게 진열대를 채웠다",
+    "monster_defeated": "이끼숲에서 몬스터를 쓰러뜨렸다",
+    "fight_lost": "몬스터와 싸우다 밀려났다",
+    "drops_sold": "길드에 전리품을 팔았다",
+    "tool_repaired": "대장간에서 도구를 고쳤다",
+    "bounty_completed": "길드 현상금을 받았다",
+    "request_posted": "게시판에 의뢰를 올렸다",
+    "bounty_posted": "길드 현상금을 걸었다",
 }
+PROFESSION_WORK = {
+    "farmer": "tend_farm", "woodcutter": "chop_wood", "chef_innkeeper": "cook_meal",
+    "merchant": "stock_shop", "herbalist": "gather_herb", "baker": "craft",
+    "blacksmith": "craft", "miner": "mine", "adventurer": "hunt", "guildmaster": "post_bounty",
+}
+
+
+def pending_offer(turns: list[ConversationTurn], offerer: str) -> dict[str, Any] | None:
+    """The barter offer ``offerer`` made in the latest turn, if it is still unanswered."""
+    if not turns or turns[-1].speaker_id != offerer:
+        return None
+    t = turns[-1]
+    if t.offer_give_item == "none" or t.offer_want_item == "none":
+        return None
+    if t.offer_give_qty < 1 or t.offer_want_qty < 1:
+        return None
+    return {"from": offerer, "give_item": t.offer_give_item, "give_qty": t.offer_give_qty,
+            "want_item": t.offer_want_item, "want_qty": t.offer_want_qty}
 
 
 @dataclass
@@ -113,10 +152,13 @@ class Agent:
         for o in config.objects:
             kind = config.kinds[o.kind]
             visible_items = o.kind == "chest" and o.owner in (spec.id, "shared", None)
+            items = dict(o.data.get("items", {})) if visible_items else {}
+            if o.kind in COUNTER_KINDS:  # shop shelves are public knowledge in the village
+                items = dict(o.data.get("stock", {}))
             self.known[o.id] = KnownObject(
                 id=o.id, kind=o.kind, pos=o.pos, state=o.state or kind.initial_state,
-                owner=o.owner, name=o.name or o.id,
-                items=dict(o.data.get("items", {})) if visible_items else {},
+                owner=o.owner, name=o.name or o.id, items=items,
+                prices=dict(o.data.get("prices", {})),
             )
         self.plan: list[PlanBlock] = []
         self.plan_day_index = -1
@@ -169,6 +211,8 @@ class Agent:
                 self.memory.perceive(tick, f"obj:{o.id}", f"새로운 {o.kind}({o.name})을 발견했다",
                                      4, subjects=[o.id])
                 continue
+            if k.state != o.state and o.kind in MOVING_KINDS:
+                k.state = o.state  # wandering monsters: tracked, not memorised every step
             if k.state != o.state:
                 imp = 3 if (o.owner == self.id or o.id in self.spec.plots) else 1
                 if o.kind == "farm_plot" and o.state == "ready" and o.id in self.spec.plots:
@@ -179,6 +223,11 @@ class Agent:
                 k.state = o.state
             if o.kind == "chest":
                 k.items = dict(o.data.get("items", {}))
+            elif o.kind in COUNTER_KINDS:
+                k.items = dict(o.data.get("stock", {}))
+                k.prices = dict(o.data.get("prices", {}))
+            if o.kind in MOVING_KINDS:
+                k.pos = (o.pos.x, o.pos.y)
             k.version = o.version
             k.last_seen = tick
         now_visible = sorted(a.id for a in view.actors)
@@ -227,6 +276,35 @@ class Agent:
                 f"{self.name_of(speaker)}이(가) 하는 말을 들었다: \"{ev.data.get('text', '')}\"",
                 2, subjects=[speaker],
             )
+        elif ev.kind == "shop_sale" and ev.target_id == me and ev.actor_id in self.names:
+            buyer = ev.actor_id
+            self.memory.perceive(
+                tick, f"sale:{buyer}",
+                f"{self.name_of(buyer)}이(가) 내 가게에서 {ev.data.get('item')} "
+                f"{ev.data.get('qty')}개를 샀다", 3, subjects=[buyer])
+            self.relationships.apply_event(buyer, "shop_customer")
+        elif ev.kind == "shop_sale" and ev.actor_id == me and ev.target_id in self.names:
+            seller = ev.target_id
+            total = ev.data.get("total", ev.data.get("price"))
+            self.memory.perceive(
+                tick, f"bought:{seller}",
+                f"{self.name_of(seller)}의 가게에서 {ev.data.get('item')} "
+                f"{ev.data.get('qty', 1)}개를 {total}코인에 샀다", 2, subjects=[seller])
+            self.relationships.apply_event(seller, "shop_customer")
+        elif ev.kind == "p2p_trade" and me in (ev.actor_id, ev.target_id):
+            other = ev.target_id if ev.actor_id == me else ev.actor_id
+            self.memory.add(tick, "observation",
+                            f"{self.name_of(other or '')}와(과) 물물교환을 했다 "
+                            f"{dumps(ev.data)}", 4, valence=0.2, subjects=[other or me])
+            self.relationships.apply_event(other or "", "fair_trade")
+        elif ev.kind == "fainted" and ev.actor_id == me:
+            self.memory.add(tick, "observation", "이끼숲에서 쓰러져 여관에서 깨어났다", 7,
+                            valence=-0.6, subjects=[me])
+        elif ev.kind == "bounty_completed" and ev.target_id == me and ev.actor_id in self.names:
+            self.memory.perceive(tick, f"bounty:{ev.actor_id}",
+                                 f"{self.name_of(ev.actor_id)}이(가) 내 현상금을 해결했다", 4,
+                                 subjects=[ev.actor_id])
+            self.relationships.apply_event(ev.actor_id, "bounty_paid")
         elif ev.kind == "merchant_arrived":
             self.memory.perceive(tick, "merchant", "떠돌이 상인이 장터에 왔다", 3,
                                  subjects=["merchant"])
@@ -321,7 +399,8 @@ class Agent:
                 "generosity": s.generosity, "impulsiveness": s.impulsiveness,
                 "sociability": s.sociability, "wake_minute": s.wake_minute,
                 "sleep_minute": s.sleep_minute, "bed_id": s.bed_id, "chest_id": s.chest_id,
-                "home_area": s.home_area, "plots": s.plots}
+                "home_area": s.home_area, "plots": s.plots, "profession": s.profession,
+                "skills": s.skills, "shop_id": s.shop_id, "sells": s.sells}
 
     def _state_of(self, view: WorldView, oid: str) -> str | None:
         for o in view.objects:
@@ -345,23 +424,41 @@ class Agent:
         if work_plots:
             opts["tend_farm"] = {"targets": ["my_plots", *work_plots]}
         mature = [k for k in self.known.values() if k.kind == "tree" and k.state == "mature"]
-        if len(mature) > cfg.economy.forest_reserve:
+        has_axe = any(eq.get("item") == "axe" and eq.get("durability", 0) > 0
+                      for eq in view.self_actor.equipment.values())
+        lumberjack = has_axe or "woodcutting" in view.self_actor.skills
+        if len(mature) > cfg.economy.forest_reserve and lumberjack:
             opts["chop_wood"] = {"targets": ["forest"]}
         bushes = sorted(k.id for k in self.known.values()
                         if k.kind == "berry_bush" and k.state == "ripe")
         if bushes:
             opts["forage"] = {"targets": bushes}
-        hearths = sorted(k.id for k in self.known.values() if k.kind == "hearth")
-        cookable = [
-            name for name, r in cfg.recipes.items()
-            if all(inv.get(i, 0) >= n + r.fuel.get(i, 0) for i, n in r.inputs.items())
-            and all(inv.get(i, 0) >= n + r.inputs.get(i, 0) for i, n in r.fuel.items())
-        ]
-        if hearths and cookable:
-            opts["cook_meal"] = {"targets": hearths, "items": cookable}
-        foods = [i for i in inv if cfg.items.get(i) and cfg.items[i].food > 0]
+        skills = set(view.self_actor.skills)
+        stations: dict[str, list[str]] = {}
+        for k in self.known.values():
+            stations.setdefault(k.kind, []).append(k.id)
+        craftable = {
+            name: r for name, r in sorted(cfg.recipes.items())
+            if (not r.skill or r.skill in skills) and r.station in stations
+            and recipe_needs(r.inputs, r.fuel, r.fuel_any, inv) is not None
+        }
+        cookable = [n for n, r in craftable.items() if r.station == "hearth"]
+        if cookable:
+            opts["cook_meal"] = {"targets": sorted(stations["hearth"]), "items": cookable}
+        crafts = [n for n, r in craftable.items() if r.station != "hearth"]
+        if crafts:
+            opts["craft"] = {
+                "targets": sorted({sid for n in crafts for sid in stations[craftable[n].station]}),
+                "items": crafts,
+            }
+        foods = [i for i, n in inv.items() if n > 0 and (d := cfg.items.get(i)) is not None
+                 and d.food >= 10 and not i.endswith("_potion")]
         if foods:
             opts["eat_food"] = {"targets": ["none"], "items": sorted(foods)}
+        potions = sorted(i for i, n in inv.items() if n > 0 and i.endswith("_potion"))
+        if potions:
+            opts["use_potion"] = {"targets": ["none"], "items": potions}
+        self._phase2_options(view, opts)
         chests = sorted(k.id for k in self.known.values() if k.kind == "chest")
         store_items = sorted(i for i, n in inv.items() if n > 0 and i != "coins")
         take_items = sorted({i for c in chests for i, n in self.known[c].items.items() if n > 0})
@@ -369,7 +466,8 @@ class Agent:
             opts["store_or_take"] = {"targets": chests,
                                      "items": sorted(set(store_items) | set(take_items))}
         boards = sorted(k.id for k in self.known.values() if k.kind == "notice_board")
-        orders = [o.id for o in view.orders if inv.get(o.item, 0) >= o.qty]
+        orders = [o.id for o in view.orders if inv.get(o.item, 0) >= o.qty
+                  and o.kind != "bounty" and o.poster_id != self.id and not o.fulfilled_by]
         if boards and orders:
             opts["post_or_fulfill_order"] = {"targets": boards, "items": orders}
         stalls = sorted(k.id for k in self.known.values() if k.kind == "trading_stall")
@@ -378,6 +476,12 @@ class Agent:
             sell = [i for i, d in cfg.items.items() if d.sell and inv.get(i, 0) > 0]
             if buy or sell:
                 opts["trade"] = {"targets": stalls, "items": sorted(set(buy) | set(sell))}
+        if stalls and view.merchant_present and "trading" in skills and self.spec.shop_id:
+            coins = inv.get("coins", 0)
+            stock = [i for i in self.spec.sells
+                     if (d := cfg.items.get(i)) is not None and d.buy and coins >= d.buy]
+            if stock:
+                opts["run_stall"] = {"targets": stalls, "items": stock}
         others = sorted(k for k in self.names if k != self.id)
         opts["visit_and_talk"] = {"targets": others, "items": list(TOPICS)}
         opts["sleep"] = {"targets": [self.spec.bed_id]}
@@ -388,6 +492,69 @@ class Agent:
                 opts.pop(routine, None)
         return opts
 
+    def _phase2_options(self, view: WorldView, opts: dict[str, dict[str, list[str]]]) -> None:
+        """Professions, P2P shops, guild, requests, tools and hunting (known world only)."""
+        cfg = self.config
+        me = view.self_actor
+        inv = me.inventory
+        coins = inv.get("coins", 0)
+        skills = set(me.skills)
+        counters = sorted(k.id for k in self.known.values() if k.kind in COUNTER_KINDS)
+        own = self.spec.shop_id if self.spec.shop_id in self.known else None
+        if own and self.known[own].kind == "shop_counter":
+            stockable = sorted(i for i in self.spec.sells if inv.get(i, 0) > 0)
+            if stockable:
+                opts["stock_shop"] = {"targets": [own], "items": stockable}
+        buy_targets, buy_items = [], set()
+        for sid in counters:
+            k = self.known[sid]
+            if k.owner == self.id:
+                continue
+            items = [i for i, n in k.items.items()
+                     if n > 0 and coins >= known_price(cfg, k, i)]
+            if items:
+                buy_targets.append(sid)
+                buy_items.update(items)
+        if buy_targets:
+            opts["buy_from_shop"] = {"targets": buy_targets, "items": sorted(buy_items)}
+        if "mining" in skills and any(k.kind == "ore_node" and k.state == "rich"
+                                      for k in self.known.values()):
+            opts["mine"] = {"targets": ["quarry"]}
+        herbs = sorted(k.id for k in self.known.values()
+                       if k.kind == "herb_patch" and k.state == "ripe")
+        if "alchemy" in skills and herbs:
+            opts["gather_herb"] = {"targets": ["pond", *herbs]}
+        weapon = me.equipment.get("weapon") or {}
+        if "combat" in skills and weapon.get("durability", 0) > 0 and me.needs.hp >= 55:
+            opts["hunt"] = {"targets": ["mosswood"], "items": ["any", *sorted(cfg.monsters)]}
+        guilds = [sid for sid in counters if self.known[sid].kind == "guild_counter"]
+        cap = cfg.shops.guild_stock_cap
+        drops = sorted(i for i, n in inv.items()
+                       if n > 0 and (d := cfg.items.get(i)) is not None and d.drop
+                       and any(self.known[g].items.get(i, 0) < cap for g in guilds))
+        if guilds and drops:
+            opts["sell_drops"] = {"targets": guilds, "items": ["all", *drops]}
+        mine_guild = [g for g in guilds if self.known[g].owner == self.id]
+        open_bounties = {o.item for o in view.orders if o.kind == "bounty" and not o.fulfilled_by}
+        if mine_guild and len(open_bounties) < 3:
+            species = sorted(s for s in cfg.monsters if s not in open_bounties)
+            if species:
+                opts["post_bounty"] = {"targets": mine_guild, "items": species}
+        boards = sorted(k.id for k in self.known.values() if k.kind == "notice_board")
+        mine_open = sum(1 for o in view.orders
+                        if o.kind == "order" and o.poster_id == self.id and not o.fulfilled_by)
+        if boards and mine_open < 2 and coins >= 15:
+            wants = sorted(i for i, d in cfg.items.items()
+                           if i != "coins" and not d.drop and d.value
+                           and coins >= request_reward(cfg, i, 1) + 5)
+            if wants:
+                opts["post_request"] = {"targets": boards, "items": wants}
+        forges = sorted(k.id for k in self.known.values() if k.kind == "forge_anvil")
+        worn = sorted(eq["item"] for eq in me.equipment.values()
+                      if eq.get("durability", 0) < eq.get("max_durability", 0) * 0.5)
+        if forges and worn and ("smithing" in skills or coins >= cfg.shops.repair_fee):
+            opts["repair_tool"] = {"targets": forges, "items": worn}
+
     def current_block(self, minute: int) -> PlanBlock | None:
         return next((b for b in self.plan if b.start_minute <= minute < b.end_minute), None)
 
@@ -395,10 +562,13 @@ class Agent:
     def _default_plan(self) -> list[PlanBlock]:
         s = self.spec
         w = s.wake_minute
+        work = PROFESSION_WORK.get(s.profession, "forage")
         return [
-            PlanBlock(start_minute=w, end_minute=w + 240, routine="tend_farm", note="아침 밭일"),
+            PlanBlock(start_minute=w, end_minute=w + 240, routine=work,  # type: ignore[arg-type]
+                      note="아침 일"),
             PlanBlock(start_minute=w + 240, end_minute=780, routine="forage", note="채집"),
-            PlanBlock(start_minute=780, end_minute=1020, routine="chop_wood", note="오후 일"),
+            PlanBlock(start_minute=780, end_minute=1020, routine=work,  # type: ignore[arg-type]
+                      note="오후 일"),
             PlanBlock(start_minute=1020, end_minute=s.sleep_minute, routine="wander",
                       note="저녁 산책"),
         ]
@@ -443,8 +613,20 @@ class Agent:
             "known_chests": {k.id: {"owner": k.owner, "items": k.items}
                              for k in self.known.values() if k.kind == "chest"},
             "orders": [o.model_dump() for o in view.orders],
-            "item_prices": {i: {"buy": d.buy, "sell": d.sell, "food": d.food}
+            "item_prices": {i: {"buy": d.buy, "sell": d.sell, "food": d.food, "value": d.value}
                             for i, d in self.config.items.items()},
+            "hp": view.self_actor.needs.hp,
+            "equipment": {slot: dict(eq) for slot, eq in view.self_actor.equipment.items()},
+            "shops": {k.id: {"owner": k.owner, "kind": k.kind, "stock": dict(k.items),
+                             "prices": {i: known_price(self.config, k, i) for i in k.items}}
+                      for k in self.known.values() if k.kind in COUNTER_KINDS},
+            "stations": {k.id: k.kind for k in self.known.values()
+                         if k.kind in {r.station for r in self.config.recipes.values()}},
+            "recipes": {n: {"station": r.station, "inputs": r.inputs, "fuel": r.fuel,
+                            "fuel_any": r.fuel_any, "output": r.output,
+                            "output_qty": r.output_qty}
+                        for n, r in self.config.recipes.items()
+                        if not r.skill or r.skill in view.self_actor.skills},
             "recent_actions": self.recent_actions, "rejections": self.rejections,
             "goals": self.goals, "relationships": rels, "unanswered": self.unanswered,
             "talked_today": self.talked_today, "visible_actors": self.visible_actors,
@@ -462,7 +644,7 @@ class Agent:
             o = opts.get(r.routine)
             if o is None:
                 return f"routine {r.routine} is not available now; choose from {sorted(opts)}"
-            if r.routine not in ("eat_food",) and r.target not in o["targets"]:
+            if r.routine not in ("eat_food", "use_potion") and r.target not in o["targets"]:
                 return f"target must be one of {o['targets']}"
             if "items" in o and r.routine != "visit_and_talk" and r.item not in o["items"]:
                 return f"item must be one of {o['items']}"
@@ -470,7 +652,7 @@ class Agent:
                 return self._validate_chest_op(r, inv)
             if r.routine == "trade":
                 return self._validate_trade(r, inv)
-            return None
+            return self._validate_phase2(r, inv)
 
         reply = await self.router.call(self._request("choose_routine", view, context, schema),
                                        RoutineReply, validate)
@@ -496,6 +678,24 @@ class Agent:
                 return f"take qty {r.qty} exceeds known stock {r.item}={stock} in {r.target}"
             return None
         return "op must be 'store' or 'take' for store_or_take"
+
+    def _validate_phase2(self, r: RoutineReply, inv: dict[str, int]) -> str | None:
+        cfg = self.config
+        k = self.known.get(r.target)
+        if r.routine == "craft" and k is not None:
+            recipe = cfg.recipes.get(r.item)
+            if recipe is not None and recipe.station != k.kind:
+                return f"recipe {r.item} needs a {recipe.station}, not {k.kind}"
+        if r.routine == "buy_from_shop" and k is not None:
+            stock = k.items.get(r.item, 0)
+            if stock < r.qty:
+                return f"{r.target} has only {stock} {r.item} (last seen)"
+            cost = known_price(cfg, k, r.item) * r.qty
+            if inv.get("coins", 0) < cost:
+                return f"buying {r.qty} {r.item} costs {cost} coins; have {inv.get('coins', 0)}"
+        if r.routine == "stock_shop" and inv.get(r.item, 0) < 1:
+            return f"no {r.item} to stock"
+        return None
 
     def _validate_trade(self, r: RoutineReply, inv: dict[str, int]) -> str | None:
         item = self.config.items.get(r.item)
@@ -526,11 +726,17 @@ class Agent:
         if needs.hunger >= self.config.needs.hungry_threshold and "eat_food" in opts:
             return RoutineChoice(routine="eat_food", item=opts["eat_food"]["items"][0],
                                  reason="fallback")
+        if needs.hp < 45 and "use_potion" in opts:
+            return RoutineChoice(routine="use_potion", item=opts["use_potion"]["items"][0],
+                                 reason="fallback")
         block = self.current_block(m)
-        if block and block.routine in opts and block.routine in ("tend_farm", "chop_wood",
-                                                                   "forage"):
-            return RoutineChoice(routine=block.routine, target=opts[block.routine]["targets"][0],
-                                 qty=3, reason="fallback")
+        if block and block.routine in opts and block.routine in (
+            "tend_farm", "chop_wood", "forage", "mine", "gather_herb", "hunt", "craft",
+            "cook_meal", "stock_shop", "post_bounty",
+        ):
+            o = opts[block.routine]
+            return RoutineChoice(routine=block.routine, target=o["targets"][0],
+                                 item=o.get("items", ["none"])[0], qty=3, reason="fallback")
         if "forage" in opts:
             return RoutineChoice(routine="forage", target=opts["forage"]["targets"][0],
                                  reason="fallback")
@@ -594,6 +800,7 @@ class Agent:
         recent = self._recent(mems)
         shareable = self._shareable(partner)
         inv = view.self_actor.inventory
+        pending = pending_offer(session.turns, partner)
         giftable = sorted(i for i, n in inv.items()
                           if n >= 2 and self.config.items.get(i) and self.config.items[i].food)
         context = {
@@ -611,16 +818,41 @@ class Agent:
                            "confidence": m.confidence} for m in shareable],
             "giftable": giftable, "needs": view.self_actor.needs.model_dump(),
             "unanswered": partner in self.unanswered,
+            "inventory": {i: n for i, n in sorted(inv.items()) if n > 0},
+            "wanted_items": self._wanted_items(view),
+            "surplus": self._surplus(inv),
+            "item_values": {i: d.value for i, d in sorted(self.config.items.items()) if d.value},
+            "pending_offer": pending,
         }
         gift_enum = ["none", *giftable]
         share_enum = ["none", *(m.id for m in shareable)]
-        schema = flat_schema(TurnReply, {"gift_item": gift_enum, "share_memory_id": share_enum})
+        give_enum = ["none", *(i for i, n in sorted(inv.items()) if n > 0)]
+        want_enum = ["none", *sorted(self.config.items)]
+        schema = flat_schema(TurnReply, {"gift_item": gift_enum, "share_memory_id": share_enum,
+                                         "offer_give_item": give_enum,
+                                         "offer_want_item": want_enum})
 
         def validate(r: TurnReply) -> str | None:
             if r.gift_item not in gift_enum:
                 return f"gift_item must be one of {gift_enum}"
             if r.share_memory_id not in share_enum:
                 return f"share_memory_id must be one of {share_enum}"
+            if r.offer_give_item != "none":
+                if r.offer_give_item not in give_enum or r.offer_want_item not in want_enum:
+                    return "offer items must come from the enums"
+                if r.offer_give_item == r.offer_want_item:
+                    return "offer_give_item and offer_want_item must differ"
+                if not 1 <= r.offer_give_qty <= inv.get(r.offer_give_item, 0):
+                    return (f"offer_give_qty must be 1..{inv.get(r.offer_give_item, 0)} "
+                            f"for {r.offer_give_item}")
+                if r.offer_want_item == "none" or r.offer_want_qty < 1:
+                    return "an offer needs offer_want_item and offer_want_qty >= 1"
+            if r.trade_response == "accept":
+                if pending is None:
+                    return "trade_response accept needs a pending_offer from the partner"
+                if inv.get(pending["want_item"], 0) < pending["want_qty"]:
+                    return (f"cannot accept: you have {inv.get(pending['want_item'], 0)} "
+                            f"{pending['want_item']}, the offer wants {pending['want_qty']}")
             return None
 
         reply = await self.router.call(self._request("converse_turn", view, context, schema),
@@ -634,6 +866,29 @@ class Agent:
                                 **reply.model_dump())
         shared = self.memory.get(reply.share_memory_id) if reply.share_memory_id != "none" else None
         return TurnDecision(turn=turn, shared=shared)
+
+    def _wanted_items(self, view: WorldView) -> list[str]:
+        """Goods this villager could use: recipe inputs/fuel, food when low, missing gear."""
+        cfg = self.config
+        me = view.self_actor
+        inv = me.inventory
+        want: set[str] = set()
+        for r in cfg.recipes.values():
+            if r.skill and r.skill in me.skills:
+                want.update(r.inputs)
+                want.update(r.fuel)
+                want.update(r.fuel_any)
+        if sum(n for i, n in inv.items() if (d := cfg.items.get(i)) and d.food >= 10) < 2:
+            want.update(i for i, d in cfg.items.items() if d.food >= 40)
+        if "combat" in me.skills:
+            want.update(("heal_potion", "sword", "armor"))
+        return sorted(want - {"coins"})
+
+    def _surplus(self, inv: dict[str, int]) -> dict[str, int]:
+        keep = 3
+        return {i: n - keep for i, n in sorted(inv.items())
+                if i != "coins" and n > keep and self.config.items.get(i) is not None
+                and self.config.items[i].value > 0}
 
     def receive_hearsay(self, record: MemoryRecord, speaker: str, tick: int) -> MemoryRecord:
         rec = self.memory.add_hearsay(tick, record, speaker, self.name_of(speaker))

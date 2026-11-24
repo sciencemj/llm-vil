@@ -14,6 +14,7 @@ from typing import Any
 
 from ..agent.memory import rumor_text
 from ..engine import CognitionClock, SimEngine
+from ..engine.sim_engine import coin_gini
 from ..schemas.base import Frozen
 from ..schemas.world import Weather, WorldEvent
 from .replay import DEFAULT_CAP, SPEECH_TICKS, ReplayRecorder
@@ -38,6 +39,8 @@ class AgentStateDelta(Frozen):
     hunger: float
     stamina: float
     mood: float
+    hp: float = 100.0
+    fainted: bool = False
     routine: str | None = None
     in_conversation: bool = False
 
@@ -60,6 +63,7 @@ class SimRuntime:
         self.replay = ReplayRecorder(engine.store, replay_cap)
         self._tick_events: list[dict[str, Any]] = []
         self._speech: dict[str, tuple[int, str]] = {}
+        self._fainted_until: dict[str, int] = {}
         self.clients: set[asyncio.Queue[dict[str, Any] | None]] = set()
         self._lock = asyncio.Lock()  # serializes engine.step() with client commands
         self.dropped_clients = 0
@@ -138,6 +142,8 @@ class SimRuntime:
                 obj = w.objects.get(payload["object_id"])
                 if obj is not None:
                     payload["data"] = w._obj_view(obj).data
+                    if obj.kind == "monster":
+                        payload["pos"] = {"x": obj.pos[0], "y": obj.pos[1]}
             if payload["type"] == "clock":
                 continue  # replaced by the per-tick clock message above
             if payload["type"] == "conversation" and payload.get("utterance"):
@@ -168,11 +174,17 @@ class SimRuntime:
             actors.append([aid, a.pos[0], a.pos[1], a.facing, a.activity,
                            agent.routine.routine if agent.routine else None,
                            round(a.hunger, 1), round(a.stamina, 1), round(a.mood, 1),
-                           aid in e.actor_session, speech])
+                           aid in e.actor_session, speech, round(a.hp, 1), self._is_fainted(aid)])
         objects = []
         for o in w.objects.values():
-            data = {k: v for k, v in o.data.items() if k in ("crop", "growth")}
-            objects.append([o.id, o.state, data] if data else [o.id, o.state])
+            data = {k: v for k, v in o.data.items()
+                    if k in ("crop", "growth", "species", "stock", "prices", "open", "treasury")}
+            if o.kind == "monster":
+                objects.append([o.id, o.state, data, [o.pos[0], o.pos[1]]])
+            elif data:
+                objects.append([o.id, o.state, data])
+            else:
+                objects.append([o.id, o.state])
         frame = {"w": w.weather.value, "mp": w.merchant_present, "a": actors, "o": objects,
                  "ev": self._tick_events}
         self._tick_events = []
@@ -210,19 +222,28 @@ class SimRuntime:
                 continue
             view = w._obj_view(obj).model_dump(mode="json")
             view["state"] = row[1]
-            view["data"] = {**{k: v for k, v in view["data"].items()
-                               if k not in ("crop", "growth")}, **(row[2] if len(row) > 2 else {})}
+            view["data"] = {
+                **{k: v for k, v in view["data"].items()
+                   if k not in ("crop", "growth", "species", "stock", "prices", "open",
+                                "treasury")},
+                **(row[2] if len(row) > 2 else {}),
+            }
+            if len(row) > 3 and row[3]:
+                view["pos"] = {"x": row[3][0], "y": row[3][1]}
             objects.append(view)
         info = {a["actor_id"]: a for a in snap["actors"]}
         actors = []
-        for aid, x, y, facing, activity, routine, hunger, stamina, mood, conv, speech in frame["a"]:
+        for arow in frame["a"]:
+            aid, x, y, facing, activity, routine, hunger, stamina, mood, conv, speech = arow[:11]
+            hp = arow[11] if len(arow) > 11 else 100.0
+            fainted = bool(arow[12]) if len(arow) > 12 else False
             base = info.get(aid)
             if base is None:
                 continue
             actors.append({**base, "x": x, "y": y, "facing": facing, "activity": activity,
                            "routine": routine, "hunger": hunger, "stamina": stamina,
-                           "mood": mood, "in_conversation": conv, "path": None,
-                           "speech": speech})
+                           "mood": mood, "hp": hp, "fainted": fainted,
+                           "in_conversation": conv, "path": None, "speech": speech})
         snap.update({
             "replay": True,
             "clock": {**snap["clock"], "tick": at, "day": at // cfg.ticks_per_day,
@@ -238,12 +259,19 @@ class SimRuntime:
         new = pending[self._seen:]
         self._seen = len(pending)
         for ev in new:
+            if ev.kind == "fainted" and ev.actor_id:
+                self._fainted_until[ev.actor_id] = ev.tick + 15
             if ev.kind in TIMELINE_SKIP or (ev.importance < 1 and ev.kind != "utterance"):
                 continue
             payload = event_payload(ev)
             self.timeline.append(payload)
             self._tick_events.append(payload)
             self._emit(payload)
+
+    def _is_fainted(self, aid: str) -> bool:
+        w = self.engine.world
+        a = w.actors[aid]
+        return a.hp < self.engine.config.combat.faint_hp or w.tick < self._fainted_until.get(aid, 0)
 
     # ------------------------------------------------------------ fan-out
     def _emit(self, msg: dict[str, Any]) -> None:
@@ -282,9 +310,19 @@ class SimRuntime:
         return AgentStateDelta(
             actor_id=aid, x=a.pos[0], y=a.pos[1], facing=a.facing, activity=a.activity,
             hunger=round(a.hunger, 2), stamina=round(a.stamina, 2), mood=round(a.mood, 2),
+            hp=round(a.hp, 2), fainted=self._is_fainted(aid),
             routine=agent.routine.routine if agent.routine else None,
             in_conversation=aid in self.engine.actor_session,
         )
+
+    def _metrics_view(self) -> dict[str, Any]:
+        e = self.engine
+        m: dict[str, Any] = dict(e.metrics)
+        holdings = e.world.coin_holdings()
+        villagers = [holdings.get(aid, 0) for aid in e.order]
+        m["coin_supply"] = sum(holdings.values())
+        m["coin_gini"] = round(coin_gini(villagers), 4)
+        return m
 
     def health(self) -> dict[str, Any]:
         w = self.engine.world
@@ -304,9 +342,13 @@ class SimRuntime:
                 path = {"start_tick": a.action.next_step_tick - a.action.step_ticks,
                         "step_ticks": a.action.step_ticks,
                         "waypoints": [{"x": p[0], "y": p[1]} for p in a.action.path]}
-            actors.append({**self.agent_state(aid).model_dump(mode="json"), "name": spec.name,
-                           "occupation": spec.occupation, "home_area": spec.home_area,
-                           "path": path})
+            actors.append({
+                **self.agent_state(aid).model_dump(mode="json"), "name": spec.name,
+                "occupation": spec.occupation, "profession": spec.profession,
+                "skills": list(spec.skills), "home_area": spec.home_area,
+                "equipment": {k: dict(v) for k, v in a.equipment.items()},
+                "path": path,
+            })
         return {
             "type": "snapshot",
             "map": {"width": cfg.width, "height": cfg.height, "name": cfg.name,
@@ -326,7 +368,7 @@ class SimRuntime:
             },
             "orders": [o.model_dump(mode="json") for o in w.orders if o.fulfilled_by is None],
             "events": list(self.timeline)[-120:],
-            "metrics": dict(e.metrics),
+            "metrics": self._metrics_view(),
             "sessions": [{"id": s.id, "participants": s.participants, "topic": s.topic}
                          for s in e.sessions.values()],
         }
@@ -336,15 +378,33 @@ class SimRuntime:
         agent = e.agents.get(aid)
         if agent is None:
             return None
-        a = e.world.actors[aid]
+        w = e.world
+        a = w.actors[aid]
         spec = agent.spec
         mem = agent.memory.records
+        shops = [
+            {
+                "id": o.id, "name": o.name, "kind": o.kind,
+                "open": bool(o.data.get("open", True)),
+                "stock": dict(sorted(o.data.get("stock", {}).items())),
+                "prices": {item: w.shop_price(o, item)
+                           for item in sorted(set(o.data.get("stock", {}))
+                                              | set(o.data.get("prices", {})))},
+                **({"treasury": o.data.get("treasury", 0)} if o.kind == "guild_counter" else {}),
+            }
+            for o in w.objects.values()
+            if o.kind in ("shop_counter", "guild_counter") and o.owner == aid
+        ]
         return {
             "id": aid, "name": spec.name, "age": spec.age, "occupation": spec.occupation,
+            "profession": spec.profession, "skills": list(spec.skills),
             "traits": spec.traits, "persona": spec.persona,
             "activity": a.activity, "pos": list(a.pos), "facing": a.facing,
+            "fainted": self._is_fainted(aid),
             "needs": {"hunger": round(a.hunger, 1), "stamina": round(a.stamina, 1),
-                      "mood": round(a.mood, 1)},
+                      "mood": round(a.mood, 1), "hp": round(a.hp, 1)},
+            "equipment": {k: dict(v) for k, v in a.equipment.items()},
+            "shops": shops,
             "inventory": dict(sorted(a.inventory.items())),
             "routine": agent.routine.model_dump(mode="json") if agent.routine else None,
             "plan": [b.model_dump(mode="json") for b in agent.plan],
@@ -472,6 +532,7 @@ class SimRuntime:
         self.timeline.clear()
         # speech/events of the abandoned timeline must never leak into new replay frames
         self._speech.clear()
+        self._fainted_until.clear()
         self._tick_events = []
         snap = self.snapshot()
         for q in list(self.clients):

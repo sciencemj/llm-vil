@@ -18,7 +18,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
-from ..agent.agent import Agent, RoutineDecision, TurnDecision
+from ..agent.agent import Agent, RoutineDecision, TurnDecision, pending_offer
 from ..agent.conversation import ConversationSession
 from ..agent.memory import rumor_root
 from ..llm.protocol import (
@@ -52,9 +52,11 @@ INTERRUPTIBLE = frozenset({"idle", "walking", "resting", "wait"})
 STUCK_LIMIT = 120          # sim minutes
 STUCK_FALLBACK_AFTER = 45  # engine forces a safe wander after this much idleness
 STARVING = 95.0
+WATCHED_KINDS = frozenset({"monster", "shop_counter", "guild_counter"})
 OBJECT_EVENTS = frozenset({"chopped", "tilled", "planted", "watered", "harvested", "foraged",
-                           "stored", "took", "chest_taken", "order_fulfilled", "resource_spawned",
-                           "chest_missing_discovered", "merchant_arrived", "merchant_left"})
+                           "mined", "gathered", "stored", "took", "chest_taken",
+                           "order_fulfilled", "resource_spawned", "chest_missing_discovered",
+                           "merchant_arrived", "merchant_left"})
 
 
 @dataclass
@@ -64,6 +66,26 @@ class Job:
     started: float
     reason: str = ""
     session_id: str | None = None
+
+
+PHASE2_METRICS = {
+    "p2p_trade": "p2p_trades", "shop_sale": "shop_sales", "shop_stocked": "shop_stocked",
+    "crafted": "crafts", "mined": "ore_mined", "gathered": "herbs_gathered",
+    "monster_defeated": "monsters_defeated", "fight_lost": "fights_lost", "fainted": "faints",
+    "tool_repaired": "tools_repaired", "bounty_posted": "bounties_posted",
+    "bounty_completed": "bounties_completed", "request_posted": "requests_posted",
+    "drops_sold": "drops_sold",
+}
+
+
+def coin_gini(holdings: list[int]) -> float:
+    """Gini coefficient of coin holdings (0 = equal, ->1 = one villager owns everything)."""
+    xs = sorted(max(0, x) for x in holdings)
+    n, total = len(xs), sum(xs)
+    if n == 0 or total == 0:
+        return 0.0
+    cum = sum((i + 1) * x for i, x in enumerate(xs))
+    return (2 * cum) / (n * total) - (n + 1) / n
 
 
 def _new_metrics() -> dict[str, int]:
@@ -76,6 +98,12 @@ def _new_metrics() -> dict[str, int]:
         "forced_replans", "stuck_incidents", "stuck_fallbacks", "max_stuck_minutes",
         "max_starving_minutes", "dilated_ticks", "god_events", "errors",
         "threshold_reflections", "checkpoints",
+        # Phase 2 economy
+        "p2p_trades", "shop_sales", "shop_stocked", "crafts", "crafts_hearth", "crafts_kiln",
+        "crafts_bakery_oven", "crafts_forge_anvil", "crafts_cauldron", "ore_mined",
+        "herbs_gathered", "monsters_defeated", "fights_lost", "faints", "tools_repaired",
+        "bounties_posted", "bounties_completed", "requests_posted", "requests_fulfilled",
+        "drops_sold", "coin_supply", "coin_supply_max", "coin_gini_milli",
     )
     return {k: 0 for k in keys}
 
@@ -115,6 +143,7 @@ class SimEngine:
         start = self.world.tick
         self.last_progress = {aid: start for aid in self.order}
         self.last_versions = {aid: 0 for aid in self.order}
+        self._reset_watch()
         self.starving = {aid: 0 for aid in self.order}
         self.stuck_flagged = {aid: False for aid in self.order}
         self.pending_events: list[WorldEvent] = []
@@ -151,6 +180,10 @@ class SimEngine:
                                                          ev.data.get("reason", "?")):
                         self.metrics["forced_replans"] += 1
                         self._trigger(aid, "choose_routine", "forced_replan")
+                elif ev.kind == "fainted" and ev.actor_id == aid:
+                    self.agents[aid].routine = None
+                    self.agents[aid].progress = {}
+                    self._trigger(aid, "choose_routine", "fainted")
             asleep = w.actors[aid].activity == "sleeping"
             if evs or (not asleep and w.tick % self.perceive_every == 0):
                 self.agents[aid].observe(w.perceive(aid), evs)
@@ -169,6 +202,7 @@ class SimEngine:
         self._drive_agents()
         await self._settle()
         self._update_metrics()
+        self._watch_objects()
         if self.checkpoint_pending and not self.jobs:  # clean tick boundary only
             self.checkpoint_pending = False
             self.checkpoint()
@@ -223,12 +257,22 @@ class SimEngine:
                 self.metrics["meals_eaten"] += 1
             elif k == "order_fulfilled":
                 self.metrics["orders_fulfilled"] += 1
+                if ev.data.get("poster"):
+                    self.metrics["requests_fulfilled"] += 1
             elif k == "traded":
                 self.metrics["trades"] += 1
             elif k == "chest_taken":
                 self.metrics["thefts"] += 1
             elif k == "gift":
                 self.metrics["gifts"] += 1
+            elif k in PHASE2_METRICS:
+                self.metrics[PHASE2_METRICS[k]] += 1
+                if k == "crafted":
+                    key = f"crafts_{ev.data.get('station')}"
+                    if key in self.metrics:
+                        self.metrics[key] += 1
+                elif k == "mined":
+                    self.metrics["ore_mined"] += items.get("iron_ore", 0) - 1
             self._delta(ev)
 
     def _delta(self, ev: WorldEvent) -> None:
@@ -477,7 +521,16 @@ class SimEngine:
         if agent.wants_weekly(day):  # robust to sleeping past midnight
             self._trigger(aid, "weekly", "end_of_week")
 
+    def _economy_gauges(self) -> None:
+        holdings = self.world.coin_holdings()
+        villagers = [holdings.get(aid, 0) for aid in self.order]
+        supply = sum(holdings.values())
+        self.metrics["coin_supply"] = supply
+        self.metrics["coin_supply_max"] = max(self.metrics["coin_supply_max"], supply)
+        self.metrics["coin_gini_milli"] = round(coin_gini(villagers) * 1000)
+
     def _daily_maintenance(self) -> None:
+        self._economy_gauges()
         tick = self.world.tick
         for aid in self.order:
             archived = self.agents[aid].daily_maintenance(tick)
@@ -487,6 +540,23 @@ class SimEngine:
         n = self.checkpoint_every_days
         if n and self.store is not None and self.world.day % n == 0:
             self.checkpoint_pending = True  # written at the end of a quiescent step
+
+    def _watch_objects(self) -> None:
+        """Stream wandering monsters and shop shelves to viewers (UI only, not sim state)."""
+        for oid in self.watched:
+            o = self.world.objects[oid]
+            if o.version == self.watched[oid]:
+                continue
+            self.watched[oid] = o.version
+            view = self.world._obj_view(o)
+            self.deltas.append(ObjectChangeDelta(
+                object_id=oid, state=o.state, version=o.version, data=view.data,
+                pos=TilePos(x=o.pos[0], y=o.pos[1]),
+            ))
+
+    def _reset_watch(self) -> None:
+        self.watched = {o.id: o.version for o in self.world.objects.values()
+                        if o.kind in WATCHED_KINDS}
 
     def _update_metrics(self) -> None:
         w = self.world
@@ -587,6 +657,16 @@ class SimEngine:
             self._record(res.events)
             if not res.ok:
                 turn = turn.model_copy(update={"gift_item": "none"})
+        offer = pending_offer(s.turns, partner)
+        if turn.trade_response == "accept":
+            ok = False
+            if offer is not None:
+                ok, _why, evs = w.swap_items(partner, aid, offer["give_item"], offer["give_qty"],
+                                             offer["want_item"], offer["want_qty"])
+                self._record(evs)
+                self._deliver(evs)
+            if not ok:
+                turn = turn.model_copy(update={"trade_response": "decline"})
         s.add_turn(turn, self.config.conversation.ticks_per_turn)
         self.metrics["conversation_turns"] += 1
         pos = w.actors[aid].pos
@@ -737,6 +817,7 @@ class SimEngine:
         self.metrics = {**_new_metrics(), **data["metrics"]}
         self.last_progress = dict(data["last_progress"])
         self.last_versions = dict(data["last_versions"])
+        self._reset_watch()
         self.starving = dict(data["starving"])
         self.stuck_flagged = dict(data["stuck_flagged"])
 

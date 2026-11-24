@@ -20,6 +20,22 @@ export interface PathInfo {
   waypoints: Pos[];
 }
 
+export interface EquipmentSlot {
+  item: string;
+  durability: number;
+  max_durability: number;
+}
+
+export interface ShopInfo {
+  id: string;
+  name: string;
+  kind: string;
+  open: boolean;
+  stock: Record<string, number>;
+  prices: Record<string, number>;
+  treasury?: number;
+}
+
 export interface AgentState {
   actor_id: string;
   x: number;
@@ -29,6 +45,8 @@ export interface AgentState {
   hunger: number;
   stamina: number;
   mood: number;
+  hp?: number;
+  fainted?: boolean;
   routine: string | null;
   in_conversation: boolean;
 }
@@ -36,7 +54,10 @@ export interface AgentState {
 export interface ActorInfo extends AgentState {
   name: string;
   occupation: string;
+  profession?: string;
+  skills?: string[];
   home_area: string;
+  equipment?: Record<string, EquipmentSlot>;
   path: PathInfo | null;
 }
 
@@ -100,7 +121,7 @@ export type Delta =
       facing: number;
       start_pos?: Pos;
     }
-  | { type: "object_change"; object_id: string; state: string; version: number; data?: Record<string, unknown> }
+  | { type: "object_change"; object_id: string; state: string; version: number; data?: Record<string, unknown>; pos?: Pos }
   | {
       type: "conversation";
       session_id: string;
@@ -124,10 +145,15 @@ export interface AgentDetail {
   name: string;
   age: number;
   occupation: string;
+  profession?: string;
+  skills?: string[];
   traits: string[];
   persona: string;
   activity: string;
-  needs: { hunger: number; stamina: number; mood: number };
+  fainted?: boolean;
+  needs: { hunger: number; stamina: number; mood: number; hp?: number };
+  equipment?: Record<string, EquipmentSlot>;
+  shops?: ShopInfo[];
   inventory: Record<string, number>;
   routine: { routine: string; target: string; item: string; reason: string } | null;
   plan: { start_minute: number; end_minute: number; routine: string; note: string }[];

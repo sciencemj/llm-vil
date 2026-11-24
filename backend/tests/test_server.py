@@ -34,18 +34,25 @@ def deltas(msgs):
     return [d for m in msgs if m["type"] == "batch" for d in m["deltas"]]
 
 
-def test_health_snapshot_and_agent(client):
+def test_health_snapshot_and_agent(client, config):
     h = client.get("/api/health").json()
-    assert h["ok"] and h["actors_count"] == 5 and h["paused"] and h["speed"] == 8.0
+    assert h["ok"] and h["actors_count"] == len(config.villagers) and h["paused"]
+    assert h["speed"] == 8.0
     snap_resp = client.get("/api/snapshot")
     assert "\\u" not in snap_resp.text  # ensure_ascii=False on the wire
     snap = snap_resp.json()
-    assert snap["map"]["width"] == 32 and snap["map"]["height"] == 24
-    assert {a["name"] for a in snap["actors"]} == {"민아", "준호", "서연", "도윤", "하늘"}
-    assert len(snap["objects"]) >= 40 and "mina" in snap["relationships"]
+    assert snap["map"]["width"] == 40 and snap["map"]["height"] == 30
+    assert {a["name"] for a in snap["actors"]} == {v.name for v in config.villagers}
+    assert all("profession" in a and "hp" in a and "equipment" in a and "fainted" in a
+               for a in snap["actors"])
+    assert len(snap["objects"]) >= 60 and "mina" in snap["relationships"]
     assert all("missing" not in o["data"] for o in snap["objects"])
+    assert {"p2p_trades", "shop_sales", "bounties_completed", "monsters_defeated", "faints",
+            "tools_repaired", "coin_supply", "coin_gini"} <= set(snap["metrics"])
     agent = client.get("/api/agent/mina").json()
-    assert agent["name"] == "민아" and set(agent["needs"]) == {"hunger", "stamina", "mood"}
+    assert agent["name"] == "민아" and agent["profession"] == "farmer"
+    assert set(agent["needs"]) == {"hunger", "stamina", "mood", "hp"}
+    assert "equipment" in agent and "shops" in agent and len(agent["shops"]) >= 1
     assert set(agent["relationships"]["junho"]) >= {"familiarity", "affection", "trust",
                                                     "respect"}
     assert client.get("/api/agent/nobody").status_code == 404
@@ -88,7 +95,7 @@ def test_pause_resume_speed_and_god_commands(client):
         assert ack["ok"]
         assert any(d["type"] == "object_change" and d["object_id"].startswith("berry_bush_spawn")
                    for d in deltas(msgs))
-        assert not cmd({"cmd": "god_spawn", "kind": "berry_bush", "x": 22, "y": 13})[0]["ok"]
+        assert not cmd({"cmd": "god_spawn", "kind": "berry_bush", "x": 2, "y": 18})[0]["ok"]
         ack, msgs = cmd({"cmd": "god_event", "text": "광장에 축제가 열렸다!"})
         assert ack["ok"]
         assert any(d["type"] == "event" and d["kind"] == "god_inject_event"
@@ -135,9 +142,9 @@ def test_ws_rejects_foreign_origin(client):
         assert ws.receive_json()["type"] == "snapshot"
 
 
-def test_agent_detail_has_incoming_edges(client):
+def test_agent_detail_has_incoming_edges(client, config):
     d = client.get("/api/agent/mina").json()
-    assert set(d["incoming"]) == {"junho", "seoyeon", "doyun", "haneul"}
+    assert set(d["incoming"]) == {v.id for v in config.villagers} - {"mina"}
     assert "affection" in d["incoming"]["junho"]
 
 
@@ -192,7 +199,7 @@ def test_llm_stats_endpoint_has_no_secrets(config, monkeypatch):
         assert set(s["latency_ms"]) == {"p50", "p95", "max"}
         assert s["recent_calls"] and {"tick", "agent_id", "purpose", "tier", "latency_ms",
                                       "status"} <= set(s["recent_calls"][0])
-        assert set(s["per_agent"]) <= {"mina", "junho", "seoyeon", "doyun", "haneul"}
+        assert set(s["per_agent"]) <= {v.id for v in config.villagers}
         for body in (resp.text, json.dumps(first, ensure_ascii=False)):
             assert secret not in body and "api_key\"" not in body
 

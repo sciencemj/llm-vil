@@ -1,18 +1,18 @@
-# 은빛골 (Eunbit Valley) — Phase 1 demo village.
-# Coordinates are tile (x, y); x grows east, y grows south. Grid is 32 x 24.
+# 은빛골 (Eunbit Valley) — Phase 2: 10 interdependent professions on a 40 x 30 map.
+# Coordinates are tile (x, y); x grows east, y grows south. The Mosswood monster zone
+# (x 33..39) lies behind a fence at x = 32 with a gate at (32, 14).
+# Generated layout; edit freely (tests check the invariants, not exact positions).
 name: 은빛골
 language: ko
 seed: 42
-width: 32
-height: 24
-ticks_per_day: 1440          # 1 tick = 1 sim minute
-start_minute: 300            # 05:00 on day 0, everyone still asleep
-perception_radius: 6
-
+width: 40
+height: 30
+ticks_per_day: 1440
+start_minute: 300
+perception_radius: 7
 clock:
   sim_minutes_per_real_second: 2.0
   t_max_seconds: 3.0
-
 needs:
   hunger_per_min_awake: 0.045
   hunger_per_min_asleep: 0.015
@@ -20,258 +20,1688 @@ needs:
   stamina_rest_per_min: 0.2
   hungry_threshold: 50
   tired_threshold: 25
-  slow_hunger: 85            # at/above: work and walking take twice as long
-
+  slow_hunger: 85
 economy:
-  forest_reserve: 3          # chopping refused when mature trees <= reserve
-  orders_per_day: 2
+  forest_reserve: 3
+  orders_per_day: 3
   order_templates:
-    - {item: wood, min_qty: 2, max_qty: 4, reward_per_unit: 4}
-    - {item: turnip, min_qty: 1, max_qty: 3, reward_per_unit: 5}
-    - {item: berry, min_qty: 2, max_qty: 4, reward_per_unit: 2}
-    - {item: wheat, min_qty: 1, max_qty: 2, reward_per_unit: 6}
+  - item: wood
+    min_qty: 2
+    max_qty: 4
+    reward_per_unit: 4
+  - item: turnip
+    min_qty: 1
+    max_qty: 3
+    reward_per_unit: 5
+  - item: berry
+    min_qty: 2
+    max_qty: 4
+    reward_per_unit: 2
+  - item: wheat
+    min_qty: 1
+    max_qty: 2
+    reward_per_unit: 6
+  - item: bread
+    min_qty: 1
+    max_qty: 3
+    reward_per_unit: 9
+  - item: iron_ore
+    min_qty: 2
+    max_qty: 4
+    reward_per_unit: 5
+  - item: heal_potion
+    min_qty: 1
+    max_qty: 2
+    reward_per_unit: 14
   order_lifetime_days: 2
   merchant_every_days: 3
   merchant_open_minute: 480
   merchant_close_minute: 1080
-  weather_weights: {sunny: 0.5, overcast: 0.25, rain: 0.25}
-
+  weather_weights:
+    sunny: 0.5
+    overcast: 0.25
+    rain: 0.25
 memory:
   hot_days: 3
   salient_importance: 7
   reflection_threshold: 120
   perception_cooldown: 60
   retrieve_k: 6
-
 conversation:
   max_turns: 6
   ticks_per_turn: 2
-
 items:
   coins: {}
-  wood: {sell: 2}
-  berry: {food: 10, sell: 1}
-  turnip: {food: 25, sell: 3}
-  wheat: {sell: 4}
-  turnip_seed: {buy: 2}
-  wheat_seed: {buy: 3}
-  berry_stew: {food: 55, stamina: 10}
-  turnip_soup: {food: 60, stamina: 10}
-  bread: {food: 45, buy: 6}
-
+  wood:
+    value: 3
+    sell: 2
+  charcoal:
+    value: 6
+    sell: 4
+  berry:
+    value: 2
+    food: 10
+    sell: 1
+  turnip:
+    value: 4
+    food: 25
+    sell: 3
+  wheat:
+    value: 4
+    sell: 3
+  herb:
+    value: 3
+    food: 5
+  turnip_seed:
+    value: 2
+    buy: 2
+  wheat_seed:
+    value: 3
+    buy: 3
+  berry_stew:
+    value: 12
+    food: 55
+    stamina: 10
+  turnip_soup:
+    value: 14
+    food: 60
+    stamina: 10
+  roast_meat:
+    value: 16
+    food: 70
+    stamina: 15
+  bread:
+    value: 8
+    food: 45
+    buy: 10
+  heal_potion:
+    value: 15
+    food: 1
+    hp: 50
+  stamina_potion:
+    value: 12
+    food: 1
+    stamina: 40
+  iron_ore:
+    value: 5
+    sell: 3
+  coal:
+    value: 4
+    sell: 2
+  stone:
+    value: 2
+    sell: 1
+  slime_gel:
+    value: 5
+    drop: true
+  boar_meat:
+    value: 8
+    food: 20
+    drop: true
+  boar_hide:
+    value: 7
+    drop: true
+  goblin_ore:
+    value: 12
+    drop: true
+  axe:
+    value: 20
+    equip_slot: tool
+    max_durability: 30
+  pickaxe:
+    value: 20
+    equip_slot: tool
+    max_durability: 30
+  hoe:
+    value: 18
+    equip_slot: tool
+    max_durability: 40
+  sword:
+    value: 30
+    equip_slot: weapon
+    max_durability: 25
+  armor:
+    value: 35
+    equip_slot: armor
+    max_durability: 30
 crops:
-  turnip: {seed: turnip_seed, days: 2, yield_qty: 3, seed_min: 1, seed_max: 2}
-  wheat: {seed: wheat_seed, days: 3, yield_qty: 3, seed_min: 1, seed_max: 2}
-
+  turnip:
+    seed: turnip_seed
+    days: 2
+    yield_qty: 3
+    seed_min: 1
+    seed_max: 2
+  wheat:
+    seed: wheat_seed
+    days: 3
+    yield_qty: 3
+    seed_min: 1
+    seed_max: 2
 recipes:
-  berry_stew: {inputs: {berry: 3}, fuel: {wood: 1}, output: berry_stew}
-  turnip_soup: {inputs: {turnip: 2}, fuel: {wood: 1}, output: turnip_soup}
-  bread: {inputs: {wheat: 2}, fuel: {wood: 1}, output: bread}
-
-# Data-driven object affordances. Effects with special data (crops, chests, orders,
-# trades, recipes) are resolved by the world from the sections above.
+  berry_stew:
+    station: hearth
+    inputs:
+      berry: 3
+    fuel:
+      wood: 1
+    output: berry_stew
+  turnip_soup:
+    station: hearth
+    skill: cooking
+    inputs:
+      turnip: 2
+    fuel:
+      wood: 1
+    output: turnip_soup
+    output_qty: 2
+  roast_meat:
+    station: hearth
+    skill: cooking
+    inputs:
+      boar_meat: 1
+    fuel:
+      wood: 1
+    output: roast_meat
+    output_qty: 2
+  bread:
+    station: bakery_oven
+    skill: baking
+    inputs:
+      wheat: 2
+    fuel_any:
+    - wood
+    - charcoal
+    output: bread
+    output_qty: 3
+  charcoal:
+    station: kiln
+    skill: woodcutting
+    inputs:
+      wood: 3
+    output: charcoal
+    output_qty: 2
+  heal_potion:
+    station: cauldron
+    skill: alchemy
+    inputs:
+      herb: 2
+      slime_gel: 1
+    fuel_any:
+    - wood
+    - charcoal
+    output: heal_potion
+    output_qty: 2
+  stamina_potion:
+    station: cauldron
+    skill: alchemy
+    inputs:
+      herb: 3
+    fuel_any:
+    - wood
+    - charcoal
+    output: stamina_potion
+    output_qty: 2
+  axe:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      iron_ore: 2
+    fuel_any: &id001
+    - charcoal
+    - coal
+    - wood
+    output: axe
+  pickaxe:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      iron_ore: 2
+    fuel_any: *id001
+    output: pickaxe
+  hoe:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      iron_ore: 2
+    fuel_any: *id001
+    output: hoe
+  sword:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      iron_ore: 3
+    fuel_any: *id001
+    output: sword
+  armor:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      iron_ore: 2
+      boar_hide: 2
+    fuel_any: *id001
+    output: armor
+  iron_ingot_from_goblin:
+    station: forge_anvil
+    skill: smithing
+    inputs:
+      goblin_ore: 1
+    output: iron_ore
+    output_qty: 3
 kinds:
   tree:
     initial_state: mature
     opaque: true
-    growth: {stages: [stump, sapling, young, mature], days: [1, 1, 2, 0]}
+    growth:
+      stages:
+      - stump
+      - sapling
+      - young
+      - mature
+      days:
+      - 1
+      - 1
+      - 2
+      - 0
     affordances:
-      chop: {from_states: [mature], to_state: stump, stamina_cost: 8, duration: 20,
-             yields: {wood: 3}, yields_bonus: {wood: 1}}
+      chop:
+        from_states:
+        - mature
+        to_state: stump
+        stamina_cost: 8
+        duration: 20
+        yields:
+          wood: 3
+        yields_bonus:
+          wood: 1
+        requires_tool: axe
   farm_plot:
     initial_state: untilled
     blocking: false
     affordances:
-      till: {from_states: [untilled], to_state: tilled, stamina_cost: 4, duration: 10}
-      plant: {from_states: [tilled], to_state: planted, stamina_cost: 1, duration: 5}
-      water: {from_states: [planted], to_state: watered, stamina_cost: 1, duration: 4}
-      harvest: {from_states: [ready], to_state: tilled, stamina_cost: 2, duration: 6}
+      till:
+        from_states:
+        - untilled
+        to_state: tilled
+        stamina_cost: 4
+        duration: 10
+        requires_tool: hoe
+      plant:
+        from_states:
+        - tilled
+        to_state: planted
+        stamina_cost: 1
+        duration: 5
+      water:
+        from_states:
+        - planted
+        to_state: watered
+        stamina_cost: 1
+        duration: 4
+      harvest:
+        from_states:
+        - ready
+        to_state: tilled
+        stamina_cost: 2
+        duration: 6
+        requires_tool: hoe
   berry_bush:
     initial_state: ripe
-    growth: {stages: [empty, ripe], days: [2, 0]}   # wild bushes always regrow
+    growth:
+      stages:
+      - empty
+      - ripe
+      days:
+      - 2
+      - 0
     affordances:
-      forage: {from_states: [ripe], to_state: empty, stamina_cost: 2, duration: 8,
-               yields: {berry: 3}, yields_bonus: {berry: 2}}
+      forage:
+        from_states:
+        - ripe
+        to_state: empty
+        stamina_cost: 2
+        duration: 8
+        yields:
+          berry: 3
+        yields_bonus:
+          berry: 2
   hearth:
     initial_state: idle
     affordances:
-      cook: {stamina_cost: 1, duration: 25}
+      cook:
+        stamina_cost: 1
+        duration: 25
+      craft:
+        stamina_cost: 1
+        duration: 25
   bed:
     initial_state: made
     affordances:
-      sleep: {duration: 1}
+      sleep:
+        duration: 1
   chest:
     initial_state: closed
     affordances:
-      store: {duration: 2}
-      take: {duration: 2}
+      store:
+        duration: 2
+      take:
+        duration: 2
   notice_board:
     initial_state: posted
     affordances:
-      fulfill_order: {duration: 3}
+      fulfill_order:
+        duration: 3
+      post_request:
+        duration: 3
   trading_stall:
-    initial_state: idle          # merchant_open while the traveling merchant is in town
+    initial_state: idle
     affordances:
-      trade: {duration: 4}
+      trade:
+        duration: 4
   well:
     initial_state: idle
     affordances: {}
-
-water:                        # impassable pond tiles [x, y, w, h]
-  - [22, 13, 5, 4]
-
+  kiln:
+    initial_state: idle
+    affordances:
+      craft: &id002
+        stamina_cost: 3
+        duration: 30
+  bakery_oven:
+    initial_state: idle
+    affordances:
+      craft: *id002
+  cauldron:
+    initial_state: idle
+    affordances:
+      craft: *id002
+  forge_anvil:
+    initial_state: idle
+    affordances:
+      craft: *id002
+      repair_tool:
+        stamina_cost: 1
+        duration: 10
+  tavern:
+    initial_state: open
+    affordances: {}
+  guild_hall:
+    initial_state: open
+    affordances: {}
+  gate_wood:
+    initial_state: open
+    blocking: false
+    affordances: {}
+  herb_patch:
+    initial_state: ripe
+    blocking: false
+    growth:
+      stages:
+      - empty
+      - ripe
+      days:
+      - 1
+      - 0
+    affordances:
+      gather_herb:
+        from_states:
+        - ripe
+        to_state: empty
+        stamina_cost: 2
+        duration: 10
+        requires_skill: alchemy
+        yields:
+          herb: 2
+        yields_bonus:
+          herb: 1
+  ore_node:
+    initial_state: rich
+    growth:
+      stages:
+      - depleted
+      - rich
+      days:
+      - 2
+      - 0
+    affordances:
+      mine:
+        from_states:
+        - rich
+        to_state: depleted
+        stamina_cost: 8
+        duration: 25
+        requires_skill: mining
+        requires_tool: pickaxe
+        yields:
+          iron_ore: 2
+          coal: 1
+          stone: 1
+        yields_bonus:
+          iron_ore: 1
+        yields_no_tool:
+          stone: 2
+  shop_counter:
+    initial_state: open
+    affordances:
+      stock_shop: &id003
+        duration: 2
+      buy_from_shop: &id004
+        duration: 2
+      set_prices: &id005
+        duration: 1
+  guild_counter:
+    initial_state: open
+    affordances:
+      stock_shop: *id003
+      buy_from_shop: *id004
+      set_prices: *id005
+      sell_drops:
+        duration: 3
+      post_bounty:
+        duration: 2
+  monster:
+    initial_state: roaming
+    blocking: false
+    affordances:
+      fight:
+        from_states:
+        - roaming
+        stamina_cost: 10
+        duration: 15
+        requires_tool: sword
+monsters:
+  slime:
+    power: 0.05
+    drops:
+      slime_gel: 2
+    drops_bonus:
+      slime_gel: 1
+    respawn_minutes: 240
+    damage: 8
+  boar:
+    power: 0.25
+    drops:
+      boar_meat: 2
+      boar_hide: 1
+    drops_bonus:
+      boar_meat: 1
+    respawn_minutes: 420
+    damage: 15
+  goblin:
+    power: 0.45
+    drops:
+      goblin_ore: 1
+      coins: 4
+    drops_bonus:
+      coins: 4
+    respawn_minutes: 720
+    damage: 22
+combat:
+  zone:
+  - 33
+  - 2
+  - 7
+  - 26
+  clinic: tavern_main
+shops:
+  repair_fee: 6
+  guild_stipend: 20
+  guild_treasury_floor: 60
+  guild_stock_cap: 10
+  tax_threshold: 80
+  tax_rate: 0.2
+  guild_wage: 15
+water:
+- - 2
+  - 18
+  - 4
+  - 3
+walls:
+- - 32
+  - 0
+  - 1
+  - 14
+- - 32
+  - 15
+  - 1
+  - 15
 areas:
-  - {id: forest, name: 북쪽 숲, rect: [1, 0, 30, 7]}
-  - {id: farm, name: 마을 밭, rect: [5, 12, 7, 4]}
-  - {id: plaza, name: 마을 광장, rect: [12, 17, 9, 6]}
-  - {id: pond, name: 연못가, rect: [20, 12, 8, 6]}
-  - {id: kitchen, name: 공동 부엌, rect: [12, 12, 4, 3]}
-  - {id: home_mina, name: 민아네 오두막, rect: [3, 7, 4, 4]}
-  - {id: home_junho, name: 준호네 오두막, rect: [8, 7, 4, 4]}
-  - {id: home_seoyeon, name: 서연네 오두막, rect: [13, 7, 4, 4]}
-  - {id: home_doyun, name: 도윤네 오두막, rect: [18, 7, 4, 4]}
-  - {id: home_haneul, name: 하늘네 오두막, rect: [23, 7, 4, 4]}
-
+- id: forest
+  name: 북쪽 숲
+  rect:
+  - 1
+  - 0
+  - 23
+  - 7
+- id: quarry
+  name: 북동 채석장
+  rect:
+  - 24
+  - 0
+  - 8
+  - 11
+- id: farm
+  name: 민아네 밭
+  rect:
+  - 1
+  - 8
+  - 9
+  - 4
+- id: plaza
+  name: 마을 광장
+  rect:
+  - 11
+  - 11
+  - 13
+  - 8
+- id: pond
+  name: 연못과 약초밭
+  rect:
+  - 1
+  - 17
+  - 10
+  - 6
+- id: kitchen
+  name: 여관 부엌
+  rect:
+  - 11
+  - 13
+  - 4
+  - 4
+- id: mosswood
+  name: 이끼숲
+  rect:
+  - 33
+  - 0
+  - 7
+  - 30
+- id: home_mina
+  name: 민아네 오두막
+  rect:
+  - 1
+  - 24
+  - 3
+  - 3
+- id: home_junho
+  name: 준호네 오두막
+  rect:
+  - 4
+  - 24
+  - 3
+  - 3
+- id: home_seoyeon
+  name: 서연네 오두막
+  rect:
+  - 7
+  - 24
+  - 3
+  - 3
+- id: home_doyun
+  name: 도윤네 오두막
+  rect:
+  - 10
+  - 24
+  - 3
+  - 3
+- id: home_haneul
+  name: 하늘네 오두막
+  rect:
+  - 13
+  - 24
+  - 3
+  - 3
+- id: home_taeo
+  name: 태오네 오두막
+  rect:
+  - 16
+  - 24
+  - 3
+  - 3
+- id: home_gangcheol
+  name: 강철네 오두막
+  rect:
+  - 19
+  - 24
+  - 3
+  - 3
+- id: home_bawi
+  name: 바위네 오두막
+  rect:
+  - 22
+  - 24
+  - 3
+  - 3
+- id: home_rina
+  name: 리나네 오두막
+  rect:
+  - 25
+  - 24
+  - 3
+  - 3
+- id: home_hyeonwoo
+  name: 현우네 오두막
+  rect:
+  - 28
+  - 24
+  - 3
+  - 3
 objects:
-  # North forest (14 trees)
-  - {id: tree_01, kind: tree, pos: [3, 2]}
-  - {id: tree_02, kind: tree, pos: [6, 1]}
-  - {id: tree_03, kind: tree, pos: [9, 3]}
-  - {id: tree_04, kind: tree, pos: [12, 2]}
-  - {id: tree_05, kind: tree, pos: [15, 1]}
-  - {id: tree_06, kind: tree, pos: [18, 3]}
-  - {id: tree_07, kind: tree, pos: [21, 2]}
-  - {id: tree_08, kind: tree, pos: [24, 1]}
-  - {id: tree_09, kind: tree, pos: [27, 3]}
-  - {id: tree_10, kind: tree, pos: [4, 5]}
-  - {id: tree_11, kind: tree, pos: [10, 5]}
-  - {id: tree_12, kind: tree, pos: [16, 5]}
-  - {id: tree_13, kind: tree, pos: [22, 5]}
-  - {id: tree_14, kind: tree, pos: [28, 5]}
-  # Wild berry bushes
-  - {id: bush_nw, kind: berry_bush, pos: [1, 9], name: 서쪽 산딸기}
-  - {id: bush_ne, kind: berry_bush, pos: [30, 9], name: 동쪽 산딸기}
-  - {id: bush_sw, kind: berry_bush, pos: [1, 16], name: 남서 산딸기}
-  - {id: bush_se, kind: berry_bush, pos: [30, 18], name: 남동 산딸기}
-  # Cottages: bed + personal chest
-  - {id: bed_mina, kind: bed, pos: [4, 8], owner: mina}
-  - {id: chest_mina, kind: chest, pos: [5, 8], owner: mina, data: {items: {berry: 2}}}
-  - {id: bed_junho, kind: bed, pos: [9, 8], owner: junho}
-  - {id: chest_junho, kind: chest, pos: [10, 8], owner: junho, data: {items: {wood: 2}}}
-  - {id: bed_seoyeon, kind: bed, pos: [14, 8], owner: seoyeon}
-  - {id: chest_seoyeon, kind: chest, pos: [15, 8], owner: seoyeon, data: {items: {turnip: 2}}}
-  - {id: bed_doyun, kind: bed, pos: [19, 8], owner: doyun}
-  - {id: chest_doyun, kind: chest, pos: [20, 8], owner: doyun, data: {items: {coins: 5}}}
-  - {id: bed_haneul, kind: bed, pos: [24, 8], owner: haneul}
-  - {id: chest_haneul, kind: chest, pos: [25, 8], owner: haneul, data: {items: {berry: 3}}}
-  # Farm (10 plots)
-  - {id: plot_01, kind: farm_plot, pos: [6, 13], owner: mina}
-  - {id: plot_02, kind: farm_plot, pos: [7, 13], owner: mina}
-  - {id: plot_03, kind: farm_plot, pos: [8, 13], owner: junho}
-  - {id: plot_04, kind: farm_plot, pos: [9, 13], owner: junho}
-  - {id: plot_05, kind: farm_plot, pos: [10, 13], owner: seoyeon}
-  - {id: plot_06, kind: farm_plot, pos: [6, 14], owner: seoyeon}
-  - {id: plot_07, kind: farm_plot, pos: [7, 14], owner: doyun}
-  - {id: plot_08, kind: farm_plot, pos: [8, 14], owner: doyun}
-  - {id: plot_09, kind: farm_plot, pos: [9, 14], owner: haneul}
-  - {id: plot_10, kind: farm_plot, pos: [10, 14], owner: haneul}
-  # Shared kitchen
-  - {id: chest_shared, kind: chest, pos: [13, 13], owner: shared, name: 공동 창고,
-     data: {items: {berry: 4, turnip: 2}}}
-  - {id: hearth_main, kind: hearth, pos: [14, 13], name: 공동 화덕}
-  # Pond & plaza
-  - {id: well_main, kind: well, pos: [21, 14], name: 우물}
-  - {id: board_main, kind: notice_board, pos: [14, 19], name: 마을 게시판}
-  - {id: stall_main, kind: trading_stall, pos: [17, 19], name: 장터 좌판}
-
+- id: tree_01
+  kind: tree
+  pos:
+  - 3
+  - 2
+- id: tree_02
+  kind: tree
+  pos:
+  - 6
+  - 1
+- id: tree_03
+  kind: tree
+  pos:
+  - 9
+  - 3
+- id: tree_04
+  kind: tree
+  pos:
+  - 12
+  - 2
+- id: tree_05
+  kind: tree
+  pos:
+  - 15
+  - 1
+- id: tree_06
+  kind: tree
+  pos:
+  - 18
+  - 3
+- id: tree_07
+  kind: tree
+  pos:
+  - 21
+  - 2
+- id: tree_08
+  kind: tree
+  pos:
+  - 4
+  - 5
+- id: tree_09
+  kind: tree
+  pos:
+  - 10
+  - 5
+- id: tree_10
+  kind: tree
+  pos:
+  - 16
+  - 5
+- id: tree_11
+  kind: tree
+  pos:
+  - 20
+  - 5
+- id: tree_12
+  kind: tree
+  pos:
+  - 7
+  - 3
+- id: tree_13
+  kind: tree
+  pos:
+  - 13
+  - 4
+- id: tree_14
+  kind: tree
+  pos:
+  - 19
+  - 1
+- id: kiln_main
+  kind: kiln
+  pos:
+  - 22
+  - 7
+  name: 숯가마
+  owner: junho
+- id: shop_timber
+  kind: shop_counter
+  pos:
+  - 23
+  - 8
+  name: 준호네 목재상
+  owner: junho
+  data:
+    stock:
+      wood: 6
+      charcoal: 2
+    prices: {}
+    open: true
+- id: ore_01
+  kind: ore_node
+  pos:
+  - 25
+  - 2
+  name: 광맥
+- id: ore_02
+  kind: ore_node
+  pos:
+  - 28
+  - 2
+  name: 광맥
+- id: ore_03
+  kind: ore_node
+  pos:
+  - 26
+  - 5
+  name: 광맥
+- id: ore_04
+  kind: ore_node
+  pos:
+  - 30
+  - 4
+  name: 광맥
+- id: ore_05
+  kind: ore_node
+  pos:
+  - 25
+  - 8
+  name: 광맥
+- id: ore_06
+  kind: ore_node
+  pos:
+  - 29
+  - 7
+  name: 광맥
+- id: shop_quarry
+  kind: shop_counter
+  pos:
+  - 28
+  - 10
+  name: 바위네 채석장
+  owner: bawi
+  data:
+    stock:
+      iron_ore: 4
+      coal: 4
+      stone: 4
+    prices: {}
+    open: true
+- id: plot_01
+  kind: farm_plot
+  pos:
+  - 2
+  - 9
+  owner: mina
+- id: plot_02
+  kind: farm_plot
+  pos:
+  - 3
+  - 9
+  owner: mina
+- id: plot_03
+  kind: farm_plot
+  pos:
+  - 4
+  - 9
+  owner: mina
+- id: plot_04
+  kind: farm_plot
+  pos:
+  - 5
+  - 9
+  owner: mina
+- id: plot_05
+  kind: farm_plot
+  pos:
+  - 6
+  - 9
+  owner: mina
+- id: plot_06
+  kind: farm_plot
+  pos:
+  - 2
+  - 10
+  owner: mina
+- id: plot_07
+  kind: farm_plot
+  pos:
+  - 3
+  - 10
+  owner: mina
+- id: plot_08
+  kind: farm_plot
+  pos:
+  - 4
+  - 10
+  owner: mina
+- id: plot_09
+  kind: farm_plot
+  pos:
+  - 5
+  - 10
+  owner: mina
+- id: plot_10
+  kind: farm_plot
+  pos:
+  - 6
+  - 10
+  owner: mina
+- id: shop_farm
+  kind: shop_counter
+  pos:
+  - 8
+  - 9
+  name: 민아네 농산물
+  owner: mina
+  data:
+    stock:
+      turnip: 8
+      wheat: 4
+    prices: {}
+    open: true
+- id: board_main
+  kind: notice_board
+  pos:
+  - 14
+  - 12
+  name: 마을 게시판
+- id: stall_main
+  kind: trading_stall
+  pos:
+  - 17
+  - 12
+  name: 장터 좌판
+- id: shop_general
+  kind: shop_counter
+  pos:
+  - 18
+  - 13
+  name: 도윤네 잡화점
+  owner: doyun
+  data:
+    stock:
+      turnip_seed: 6
+      wheat_seed: 4
+    prices: {}
+    open: true
+- id: tavern_main
+  kind: tavern
+  pos:
+  - 11
+  - 13
+  name: 은빛 여관
+- id: hearth_main
+  kind: hearth
+  pos:
+  - 12
+  - 15
+  name: 여관 화덕
+  owner: seoyeon
+- id: shop_tavern
+  kind: shop_counter
+  pos:
+  - 13
+  - 16
+  name: 서연네 여관 식당
+  owner: seoyeon
+  data:
+    stock:
+      berry_stew: 3
+      turnip_soup: 2
+    prices: {}
+    open: true
+- id: oven_main
+  kind: bakery_oven
+  pos:
+  - 16
+  - 15
+  name: 빵 화덕
+  owner: taeo
+- id: shop_bakery
+  kind: shop_counter
+  pos:
+  - 17
+  - 16
+  name: 태오네 빵집
+  owner: taeo
+  data:
+    stock:
+      bread: 6
+    prices: {}
+    open: true
+- id: forge_main
+  kind: forge_anvil
+  pos:
+  - 20
+  - 15
+  name: 대장간 모루
+  owner: gangcheol
+- id: shop_smithy
+  kind: shop_counter
+  pos:
+  - 21
+  - 16
+  name: 강철네 대장간
+  owner: gangcheol
+  data:
+    stock:
+      axe: 1
+      pickaxe: 1
+      hoe: 1
+      sword: 1
+    prices: {}
+    open: true
+- id: guild_hall_main
+  kind: guild_hall
+  pos:
+  - 22
+  - 12
+  name: 모험가 길드
+- id: guild_counter_main
+  kind: guild_counter
+  pos:
+  - 21
+  - 13
+  name: 길드 접수대
+  owner: hyeonwoo
+  data:
+    stock: {}
+    prices: {}
+    open: true
+    treasury: 160
+- id: chest_shared
+  kind: chest
+  pos:
+  - 15
+  - 18
+  owner: shared
+  name: 공동 창고
+  data:
+    items:
+      berry: 4
+      turnip: 2
+- id: well_main
+  kind: well
+  pos:
+  - 19
+  - 18
+  name: 우물
+- id: herb_01
+  kind: herb_patch
+  pos:
+  - 7
+  - 18
+  name: 약초밭
+  owner: haneul
+- id: herb_02
+  kind: herb_patch
+  pos:
+  - 8
+  - 18
+  name: 약초밭
+  owner: haneul
+- id: herb_03
+  kind: herb_patch
+  pos:
+  - 7
+  - 20
+  name: 약초밭
+  owner: haneul
+- id: herb_04
+  kind: herb_patch
+  pos:
+  - 8
+  - 20
+  name: 약초밭
+  owner: haneul
+- id: cauldron_main
+  kind: cauldron
+  pos:
+  - 10
+  - 19
+  name: 약초 가마솥
+  owner: haneul
+- id: shop_apothecary
+  kind: shop_counter
+  pos:
+  - 10
+  - 21
+  name: 하늘네 약방
+  owner: haneul
+  data:
+    stock:
+      heal_potion: 2
+      herb: 2
+    prices: {}
+    open: true
+- id: bush_nw
+  kind: berry_bush
+  pos:
+  - 1
+  - 13
+  name: 서쪽 산딸기
+- id: bush_ne
+  kind: berry_bush
+  pos:
+  - 30
+  - 12
+  name: 동쪽 산딸기
+- id: bush_sw
+  kind: berry_bush
+  pos:
+  - 1
+  - 21
+  name: 남서 산딸기
+- id: bush_se
+  kind: berry_bush
+  pos:
+  - 29
+  - 21
+  name: 남동 산딸기
+- id: bush_mid
+  kind: berry_bush
+  pos:
+  - 24
+  - 19
+  name: 광장 산딸기
+- id: bush_n
+  kind: berry_bush
+  pos:
+  - 1
+  - 6
+  name: 숲가 산딸기
+- id: gate_mosswood
+  kind: gate_wood
+  pos:
+  - 32
+  - 14
+  name: 이끼숲 관문
+- id: slime_1
+  kind: monster
+  pos:
+  - 35
+  - 6
+  name: 슬라임
+  data:
+    species: slime
+    home:
+    - 35
+    - 6
+- id: slime_2
+  kind: monster
+  pos:
+  - 36
+  - 12
+  name: 슬라임
+  data:
+    species: slime
+    home:
+    - 36
+    - 12
+- id: slime_3
+  kind: monster
+  pos:
+  - 34
+  - 20
+  name: 슬라임
+  data:
+    species: slime
+    home:
+    - 34
+    - 20
+- id: boar_1
+  kind: monster
+  pos:
+  - 37
+  - 9
+  name: 멧돼지
+  data:
+    species: boar
+    home:
+    - 37
+    - 9
+- id: boar_2
+  kind: monster
+  pos:
+  - 36
+  - 24
+  name: 멧돼지
+  data:
+    species: boar
+    home:
+    - 36
+    - 24
+- id: goblin_1
+  kind: monster
+  pos:
+  - 38
+  - 17
+  name: 고블린
+  data:
+    species: goblin
+    home:
+    - 38
+    - 17
+- id: bed_mina
+  kind: bed
+  pos:
+  - 1
+  - 25
+  owner: mina
+- id: chest_mina
+  kind: chest
+  pos:
+  - 2
+  - 25
+  owner: mina
+  data:
+    items:
+      berry: 2
+- id: bed_junho
+  kind: bed
+  pos:
+  - 4
+  - 25
+  owner: junho
+- id: chest_junho
+  kind: chest
+  pos:
+  - 5
+  - 25
+  owner: junho
+  data:
+    items:
+      berry: 2
+- id: bed_seoyeon
+  kind: bed
+  pos:
+  - 7
+  - 25
+  owner: seoyeon
+- id: chest_seoyeon
+  kind: chest
+  pos:
+  - 8
+  - 25
+  owner: seoyeon
+  data:
+    items:
+      berry: 2
+- id: bed_doyun
+  kind: bed
+  pos:
+  - 10
+  - 25
+  owner: doyun
+- id: chest_doyun
+  kind: chest
+  pos:
+  - 11
+  - 25
+  owner: doyun
+  data:
+    items:
+      berry: 2
+- id: bed_haneul
+  kind: bed
+  pos:
+  - 13
+  - 25
+  owner: haneul
+- id: chest_haneul
+  kind: chest
+  pos:
+  - 14
+  - 25
+  owner: haneul
+  data:
+    items:
+      berry: 2
+- id: bed_taeo
+  kind: bed
+  pos:
+  - 16
+  - 25
+  owner: taeo
+- id: chest_taeo
+  kind: chest
+  pos:
+  - 17
+  - 25
+  owner: taeo
+  data:
+    items:
+      berry: 2
+- id: bed_gangcheol
+  kind: bed
+  pos:
+  - 19
+  - 25
+  owner: gangcheol
+- id: chest_gangcheol
+  kind: chest
+  pos:
+  - 20
+  - 25
+  owner: gangcheol
+  data:
+    items:
+      berry: 2
+- id: bed_bawi
+  kind: bed
+  pos:
+  - 22
+  - 25
+  owner: bawi
+- id: chest_bawi
+  kind: chest
+  pos:
+  - 23
+  - 25
+  owner: bawi
+  data:
+    items:
+      berry: 2
+- id: bed_rina
+  kind: bed
+  pos:
+  - 25
+  - 25
+  owner: rina
+- id: chest_rina
+  kind: chest
+  pos:
+  - 26
+  - 25
+  owner: rina
+  data:
+    items:
+      berry: 2
+- id: bed_hyeonwoo
+  kind: bed
+  pos:
+  - 28
+  - 25
+  owner: hyeonwoo
+- id: chest_hyeonwoo
+  kind: chest
+  pos:
+  - 29
+  - 25
+  owner: hyeonwoo
+  data:
+    items:
+      berry: 2
 villagers:
-  - id: mina
-    name: 민아
-    age: 27
-    occupation: 농부
-    traits: [부지런함, 다정함, 계획적]
-    persona: 해 뜨기 전에 밭을 살피는 성실한 농부. 이웃에게 수확물을 나누는 걸 좋아한다.
-    wake_minute: 330
-    sleep_minute: 1260
-    home_area: home_mina
-    bed_id: bed_mina
-    chest_id: chest_mina
-    plots: [plot_01, plot_02]
-    start_pos: [4, 9]
-    inventory: {turnip_seed: 4, berry: 3, coins: 10}
-    work_bias: {farm: 0.6, wood: 0.15, forage: 0.25}
-    generosity: 0.8
-    impulsiveness: 0.05
-    sociability: 0.6
-  - id: junho
-    name: 준호
-    age: 31
-    occupation: 나무꾼
-    traits: [묵묵함, 힘셈, 의리]
-    persona: 말수는 적지만 마을의 장작을 책임지는 듬직한 나무꾼.
-    wake_minute: 345
-    sleep_minute: 1290
-    home_area: home_junho
-    bed_id: bed_junho
-    chest_id: chest_junho
-    plots: [plot_03, plot_04]
-    start_pos: [9, 9]
-    inventory: {turnip_seed: 2, wood: 2, berry: 3, coins: 8}
-    work_bias: {farm: 0.25, wood: 0.6, forage: 0.15}
-    generosity: 0.5
-    impulsiveness: 0.1
-    sociability: 0.35
-  - id: seoyeon
-    name: 서연
-    age: 24
-    occupation: 요리사
-    traits: [호기심, 수다스러움, 섬세함]
-    persona: 공동 화덕에서 스튜를 끓이며 마을 소식을 모으는 요리사.
-    wake_minute: 360
-    sleep_minute: 1275
-    home_area: home_seoyeon
-    bed_id: bed_seoyeon
-    chest_id: chest_seoyeon
-    plots: [plot_05, plot_06]
-    start_pos: [14, 9]
-    inventory: {turnip_seed: 2, wheat_seed: 2, turnip: 2, berry: 3, coins: 10}
-    work_bias: {farm: 0.4, wood: 0.1, forage: 0.5}
-    generosity: 0.7
-    impulsiveness: 0.1
-    sociability: 0.9
-  - id: doyun
-    name: 도윤
-    age: 29
-    occupation: 상인 지망생
-    traits: [영리함, 충동적, 야심]
-    persona: 장터에서 한몫 잡을 날을 꿈꾸는 꾀 많은 청년. 가끔 선을 넘는다.
-    wake_minute: 375
-    sleep_minute: 1305
-    home_area: home_doyun
-    bed_id: bed_doyun
-    chest_id: chest_doyun
-    plots: [plot_07, plot_08]
-    start_pos: [19, 9]
-    inventory: {turnip_seed: 2, wheat_seed: 2, berry: 2, coins: 15}
-    work_bias: {farm: 0.35, wood: 0.35, forage: 0.3}
-    generosity: 0.25
-    impulsiveness: 0.6
-    sociability: 0.7
-  - id: haneul
-    name: 하늘
-    age: 22
-    occupation: 채집꾼
-    traits: [자유로움, 낙천적, 관찰력]
-    persona: 숲과 연못가를 누비며 산딸기를 따는 밝은 채집꾼.
-    wake_minute: 390
-    sleep_minute: 1320
-    home_area: home_haneul
-    bed_id: bed_haneul
-    chest_id: chest_haneul
-    plots: [plot_09, plot_10]
-    start_pos: [24, 9]
-    inventory: {turnip_seed: 3, berry: 4, coins: 6}
-    work_bias: {farm: 0.3, wood: 0.2, forage: 0.5}
-    generosity: 0.6
-    impulsiveness: 0.15
-    sociability: 0.75
+- id: mina
+  name: 민아
+  age: 27
+  occupation: 농부
+  profession: farmer
+  skills:
+  - farming
+  traits:
+  - 부지런함
+  - 다정함
+  - 계획적
+  persona: 해 뜨기 전에 밭을 살피는 성실한 농부. 마을 사람들의 밥상을 책임진다.
+  wake_minute: 315
+  sleep_minute: 1260
+  home_area: home_mina
+  bed_id: bed_mina
+  chest_id: chest_mina
+  plots:
+  - plot_01
+  - plot_02
+  - plot_03
+  - plot_04
+  - plot_05
+  - plot_06
+  - plot_07
+  - plot_08
+  - plot_09
+  - plot_10
+  start_pos:
+  - 1
+  - 26
+  inventory:
+    turnip_seed: 6
+    wheat_seed: 2
+    hoe: 1
+    coins: 25
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.7
+  impulsiveness: 0.05
+  sociability: 0.6
+  shop_id: shop_farm
+  sells:
+  - turnip
+  - wheat
+- id: junho
+  name: 준호
+  age: 31
+  occupation: 나무꾼
+  profession: woodcutter
+  skills:
+  - woodcutting
+  traits:
+  - 묵묵함
+  - 힘셈
+  - 의리
+  persona: 말수는 적지만 마을의 장작과 숯을 책임지는 듬직한 나무꾼.
+  wake_minute: 330
+  sleep_minute: 1275
+  home_area: home_junho
+  bed_id: bed_junho
+  chest_id: chest_junho
+  plots: []
+  start_pos:
+  - 4
+  - 26
+  inventory:
+    axe: 1
+    wood: 2
+    coins: 25
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.5
+  impulsiveness: 0.1
+  sociability: 0.35
+  shop_id: shop_timber
+  sells:
+  - wood
+  - charcoal
+- id: seoyeon
+  name: 서연
+  age: 24
+  occupation: 요리사·여관주인
+  profession: chef_innkeeper
+  skills:
+  - cooking
+  traits:
+  - 호기심
+  - 수다스러움
+  - 섬세함
+  persona: 은빛 여관을 꾸리며 스튜와 고기 요리로 손님을 맞는 요리사.
+  wake_minute: 345
+  sleep_minute: 1290
+  home_area: home_seoyeon
+  bed_id: bed_seoyeon
+  chest_id: chest_seoyeon
+  plots: []
+  start_pos:
+  - 7
+  - 26
+  inventory:
+    turnip: 2
+    berry: 3
+    wood: 2
+    coins: 30
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.7
+  impulsiveness: 0.1
+  sociability: 0.9
+  shop_id: shop_tavern
+  sells:
+  - berry_stew
+  - turnip_soup
+  - roast_meat
+- id: doyun
+  name: 도윤
+  age: 29
+  occupation: 상인
+  profession: merchant
+  skills:
+  - trading
+  traits:
+  - 영리함
+  - 충동적
+  - 야심
+  persona: 장터에서 한몫 잡을 날을 꿈꾸는 꾀 많은 상인. 떠돌이 상단과 거래한다.
+  wake_minute: 360
+  sleep_minute: 1305
+  home_area: home_doyun
+  bed_id: bed_doyun
+  chest_id: chest_doyun
+  plots: []
+  start_pos:
+  - 10
+  - 26
+  inventory:
+    coins: 45
+    turnip_seed: 2
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.25
+  impulsiveness: 0.6
+  sociability: 0.7
+  shop_id: shop_general
+  sells:
+  - turnip_seed
+  - wheat_seed
+  - bread
+- id: haneul
+  name: 하늘
+  age: 22
+  occupation: 약초꾼
+  profession: herbalist
+  skills:
+  - alchemy
+  traits:
+  - 자유로움
+  - 낙천적
+  - 관찰력
+  persona: 연못가 약초밭을 돌보며 물약을 달이는 밝은 약초꾼.
+  wake_minute: 375
+  sleep_minute: 1320
+  home_area: home_haneul
+  bed_id: bed_haneul
+  chest_id: chest_haneul
+  plots: []
+  start_pos:
+  - 13
+  - 26
+  inventory:
+    herb: 2
+    coins: 25
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.6
+  impulsiveness: 0.15
+  sociability: 0.75
+  shop_id: shop_apothecary
+  sells:
+  - heal_potion
+  - stamina_potion
+  - herb
+- id: taeo
+  name: 태오
+  age: 35
+  occupation: 제빵사
+  profession: baker
+  skills:
+  - baking
+  traits:
+  - 꼼꼼함
+  - 새벽형
+  - 푸근함
+  persona: 새벽마다 화덕에 불을 지피는 빵집 사장. 갓 구운 빵 냄새가 자랑이다.
+  wake_minute: 315
+  sleep_minute: 1260
+  home_area: home_taeo
+  bed_id: bed_taeo
+  chest_id: chest_taeo
+  plots: []
+  start_pos:
+  - 16
+  - 26
+  inventory:
+    wheat: 4
+    wood: 2
+    coins: 25
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.6
+  impulsiveness: 0.05
+  sociability: 0.6
+  shop_id: shop_bakery
+  sells:
+  - bread
+- id: gangcheol
+  name: 강철
+  age: 42
+  occupation: 대장장이
+  profession: blacksmith
+  skills:
+  - smithing
+  traits:
+  - 고집
+  - 장인정신
+  - 투박함
+  persona: 망치 소리로 하루를 여는 대장장이. 도구와 무기를 만들고 고친다.
+  wake_minute: 330
+  sleep_minute: 1290
+  home_area: home_gangcheol
+  bed_id: bed_gangcheol
+  chest_id: chest_gangcheol
+  plots: []
+  start_pos:
+  - 19
+  - 26
+  inventory:
+    iron_ore: 2
+    coal: 2
+    coins: 30
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.4
+  impulsiveness: 0.1
+  sociability: 0.4
+  shop_id: shop_smithy
+  sells:
+  - axe
+  - pickaxe
+  - hoe
+  - sword
+  - armor
+- id: bawi
+  name: 바위
+  age: 33
+  occupation: 광부
+  profession: miner
+  skills:
+  - mining
+  traits:
+  - 우직함
+  - 인내
+  - 과묵
+  persona: 북동쪽 채석장에서 광석과 석탄을 캐는 광부.
+  wake_minute: 345
+  sleep_minute: 1275
+  home_area: home_bawi
+  bed_id: bed_bawi
+  chest_id: chest_bawi
+  plots: []
+  start_pos:
+  - 22
+  - 26
+  inventory:
+    pickaxe: 1
+    coins: 20
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.4
+  impulsiveness: 0.1
+  sociability: 0.35
+  shop_id: shop_quarry
+  sells:
+  - iron_ore
+  - coal
+  - stone
+- id: rina
+  name: 리나
+  age: 26
+  occupation: 모험가
+  profession: adventurer
+  skills:
+  - combat
+  traits:
+  - 용감함
+  - 자신감
+  - 의리
+  persona: 이끼숲의 몬스터를 사냥해 길드에 전리품을 파는 모험가.
+  wake_minute: 390
+  sleep_minute: 1335
+  home_area: home_rina
+  bed_id: bed_rina
+  chest_id: chest_rina
+  plots: []
+  start_pos:
+  - 25
+  - 26
+  inventory:
+    sword: 1
+    heal_potion: 1
+    coins: 20
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.5
+  impulsiveness: 0.2
+  sociability: 0.7
+  shop_id: null
+  sells: []
+- id: hyeonwoo
+  name: 현우
+  age: 38
+  occupation: 길드장
+  profession: guildmaster
+  skills:
+  - guild
+  traits:
+  - 침착함
+  - 공정함
+  - 계산적
+  persona: 모험가 길드를 운영하며 현상금을 걸고 전리품을 사들이는 길드장.
+  wake_minute: 360
+  sleep_minute: 1305
+  home_area: home_hyeonwoo
+  bed_id: bed_hyeonwoo
+  chest_id: chest_hyeonwoo
+  plots: []
+  start_pos:
+  - 28
+  - 26
+  inventory:
+    coins: 40
+  work_bias:
+    farm: 0.2
+    wood: 0.3
+    forage: 0.5
+  generosity: 0.5
+  impulsiveness: 0.05
+  sociability: 0.6
+  shop_id: guild_counter_main
+  sells:
+  - slime_gel
+  - boar_meat
+  - boar_hide
+  - goblin_ore

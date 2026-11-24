@@ -33,6 +33,7 @@ class NeedsState(Frozen):
     hunger: float = Field(ge=0, le=100)
     stamina: float = Field(ge=0, le=100)
     mood: float = Field(ge=0, le=100)
+    hp: float = Field(default=100.0, ge=0, le=100)
 
 
 Inventory = dict[str, int]
@@ -58,6 +59,10 @@ class ActorSnapshot(Frozen):
     needs: NeedsState
     inventory: Inventory = Field(default_factory=dict)
     version: int = 0
+    profession: str = ""
+    skills: list[str] = Field(default_factory=list)
+    # slot -> {"item": str, "durability": int, "max_durability": int}
+    equipment: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class OrderState(Frozen):
@@ -68,6 +73,9 @@ class OrderState(Frozen):
     posted_day: int
     expires_day: int
     fulfilled_by: str | None = None
+    kind: str = "order"          # order (kingdom/villager request) | bounty (guild hunt)
+    poster_id: str | None = None  # None = the kingdom's daily orders
+    escrow: int = 0               # coins held until fulfilment / refunded on expiry
 
 
 class WorldView(Frozen):
@@ -105,6 +113,18 @@ AtomicKind = Literal[
     "trade",
     "fulfill_order",
     "talk",  # engine-level intent: opens a ConversationSession, never reaches World.apply
+    # Phase 2: professions, shops, guild, combat
+    "craft",
+    "mine",
+    "gather_herb",
+    "fight",
+    "stock_shop",
+    "buy_from_shop",
+    "set_prices",
+    "sell_drops",
+    "post_request",
+    "post_bounty",
+    "repair_tool",
 ]
 
 
@@ -116,6 +136,7 @@ class AtomicAction(Frozen):
     qty: int = 1
     op: str | None = None
     ticks: int = 0
+    amount: int = 0  # coins: request/bounty reward or shop price
 
 
 class ActionIntent(Frozen):

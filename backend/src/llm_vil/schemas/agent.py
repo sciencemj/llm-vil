@@ -19,6 +19,19 @@ RoutineName = Literal[
     "sleep",
     "rest",
     "wander",
+    # Phase 2
+    "craft",
+    "stock_shop",
+    "buy_from_shop",
+    "mine",
+    "gather_herb",
+    "hunt",
+    "sell_drops",
+    "post_bounty",
+    "post_request",
+    "repair_tool",
+    "use_potion",
+    "run_stall",
 ]
 
 FacingCue = Literal["none", "face_partner", "look_away", "survey_area"]
@@ -59,6 +72,10 @@ class AgentSpec(Frozen):
     generosity: float = 0.5
     impulsiveness: float = 0.1
     sociability: float = 0.5
+    profession: str = "villager"
+    skills: list[str] = Field(default_factory=list)
+    shop_id: str | None = None  # the counter this villager runs (P2P economy)
+    sells: list[str] = Field(default_factory=list)  # goods they stock in their shop
 
 
 class PlanBlock(Frozen):
@@ -121,6 +138,12 @@ class ConversationTurn(Frozen):
     facing_cue: FacingCue = "face_partner"
     gift_item: str = "none"
     share_memory_id: str = "none"
+    # face-to-face barter: offer is made by the speaker, answered on the partner's next turn
+    offer_give_item: str = "none"
+    offer_give_qty: int = Field(default=0, ge=0, le=20)
+    offer_want_item: str = "none"
+    offer_want_qty: int = Field(default=0, ge=0, le=200)
+    trade_response: str = "none"  # accept | decline | none
 
 
 ConversationEnd = Literal["silence", "max_turns", "interrupt", "departure", "declined"]

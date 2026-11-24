@@ -51,6 +51,11 @@ class TurnReply(_Reply):
     facing_cue: FacingCue = "face_partner"
     gift_item: str = "none"
     share_memory_id: str = "none"
+    offer_give_item: str = "none"
+    offer_give_qty: int = Field(default=0, ge=0, le=20)
+    offer_want_item: str = "none"
+    offer_want_qty: int = Field(default=0, ge=0, le=200)
+    trade_response: Literal["accept", "decline", "none"] = "none"
 
 
 class ReflectionItem(_Reply):

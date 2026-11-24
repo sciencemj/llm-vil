@@ -23,11 +23,21 @@ from ..schemas.world import (
 )
 from .affordances import AffordanceRegistry
 from .grid import Tile, TileGrid, facing_toward
+from .phase2 import Phase2Mixin
 
 OBJECT_AFFORDANCES = frozenset(
     {"chop", "till", "plant", "water", "harvest", "forage", "cook", "sleep", "store", "take",
-     "fulfill_order", "trade"}
+     "fulfill_order", "trade",
+     # Phase 2
+     "craft", "mine", "gather_herb", "fight", "stock_shop", "buy_from_shop", "set_prices",
+     "sell_drops", "post_request", "post_bounty", "repair_tool"}
 )
+PHASE2_KINDS = frozenset(
+    {"cook", "craft", "fight", "stock_shop", "buy_from_shop", "set_prices", "sell_drops",
+     "post_request", "post_bounty", "repair_tool"}
+)
+GENERIC_EVENT = {"chop": "chopped", "till": "tilled", "water": "watered", "forage": "foraged",
+                 "mine": "mined", "gather_herb": "gathered"}
 ACTION_DURATIONS = {"eat": 5, "give_item": 0}
 DEFAULT_REST_TICKS = 30
 DEFAULT_WAIT_TICKS = 10
@@ -65,6 +75,10 @@ class ActorState(Mutable):
     inventory: dict[str, int] = Field(default_factory=dict)
     action: ActiveAction | None = None
     version: int = 0
+    hp: float = 100.0
+    profession: str = "villager"
+    skills: list[str] = Field(default_factory=list)
+    equipment: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class Order(Mutable):
@@ -75,6 +89,9 @@ class Order(Mutable):
     posted_day: int
     expires_day: int
     fulfilled_by: str | None = None
+    kind: str = "order"
+    poster_id: str | None = None
+    escrow: int = 0
 
 
 def _cheb(a: Tile, b: Tile) -> int:
@@ -100,7 +117,7 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
-class World:
+class World(Phase2Mixin):
     """Authoritative village state. Every mutation goes through ``apply`` / ``tick_once`` /
     explicit engine or God-mode hooks, and bumps the monotonic ``world_version``."""
 
@@ -134,6 +151,7 @@ class World:
         }
         self._food = frozenset(k for k, it in config.items.items() if it.food > 0)
         self._rebuild_static()
+        self._init_phase2()
         self._post_orders()
 
     # ------------------------------------------------------------------ time / helpers
@@ -147,7 +165,7 @@ class World:
 
     def _rebuild_static(self) -> None:
         blocked: set[Tile] = set()
-        for x, y, w, h in self.config.water:
+        for x, y, w, h in [*self.config.water, *self.config.walls]:
             blocked.update((xx, yy) for xx in range(x, x + w) for yy in range(y, y + h))
         self.opaque: set[Tile] = set()
         for o in self.objects.values():
@@ -202,8 +220,10 @@ class World:
         return ActorSnapshot.model_construct(
             id=a.id, name=a.name, pos=TilePos.model_construct(x=a.pos[0], y=a.pos[1]),
             facing=a.facing, activity=a.activity,
-            needs=NeedsState.model_construct(hunger=a.hunger, stamina=a.stamina, mood=a.mood),
-            inventory=dict(a.inventory), version=a.version,
+            needs=NeedsState.model_construct(hunger=a.hunger, stamina=a.stamina, mood=a.mood,
+                                             hp=a.hp),
+            inventory=dict(a.inventory), version=a.version, profession=a.profession,
+            skills=list(a.skills), equipment={k: dict(v) for k, v in a.equipment.items()},
         )
 
     def perceive(self, actor_id: str) -> WorldView:
@@ -268,8 +288,10 @@ class World:
             aff = self.registry.get(obj.kind, k)
             if aff is None:
                 return "not_afforded"
-            if aff.from_states and obj.state not in aff.from_states:
+            if aff.from_states and obj.state not in aff.from_states and k != "fight":
                 return f"state_{obj.state}"
+            if aff.requires_skill and aff.requires_skill not in a.skills:
+                return "needs_skill"
             if _cheb(a.pos, obj.pos) > aff.reach:
                 return "too_far"
             if aff.stamina_cost and a.stamina < aff.stamina_cost:
@@ -281,15 +303,8 @@ class World:
                     return "bad_seed"
                 if inv.get(act.item or "", 0) < 1:
                     return "no_seed"
-            if k == "cook":
-                recipe = self.config.recipes.get(act.item or "")
-                if recipe is None:
-                    return "bad_recipe"
-                need = dict(recipe.inputs)
-                for item, n in recipe.fuel.items():
-                    need[item] = need.get(item, 0) + n
-                if any(inv.get(i, 0) < n for i, n in need.items()):
-                    return "missing_ingredients"
+            if k in PHASE2_KINDS:
+                return self._check_phase2(a, act, obj)
             if k == "store" and (act.qty < 1 or inv.get(act.item or "", 0) < act.qty):
                 return "no_item"
             if k == "take" and (
@@ -304,6 +319,10 @@ class World:
                 order = self._order(act.item)
                 if order is None or order.fulfilled_by is not None:
                     return "no_order"
+                if order.kind == "bounty":
+                    return "bounty_needs_hunt"
+                if order.poster_id == a.id:
+                    return "own_request"
                 if inv.get(order.item, 0) < order.qty:
                     return "missing_items"
             return None
@@ -367,6 +386,12 @@ class World:
             base = ACTION_DURATIONS.get(act.kind, 1)
         if a.hunger >= self.config.needs.slow_hunger:
             base *= 2
+        if act.kind in OBJECT_AFFORDANCES:
+            aff = self.registry.get(self.objects[act.target_id or ""].kind, act.kind)
+            if aff is not None and aff.requires_tool and act.kind != "fight" and (
+                not self._has_tool(a, aff.requires_tool)
+            ):
+                base *= 2  # soft gate: bare hands are slow, never impossible
         return base
 
     def _target_pos(self, act: AtomicAction) -> Tile | None:
@@ -405,6 +430,11 @@ class World:
             return ActionResult(ok=True, actor_id=a.id, action=act, end_tick=self.tick,
                                 events=events)
         duration = self._duration(a, act)
+        if k == "fight":  # the monster stops roaming while engaged
+            mon = self.objects[act.target_id or ""]
+            mon.state = "engaged"
+            mon.data["engaged_by"] = a.id
+            self._bump(mon)
         a.action = ActiveAction(action=act, start_tick=self.tick, end_tick=self.tick + duration)
         a.activity = "resting" if k == "rest" else k
         events.append(self._event("action_started", actor=a.id, target=act.target_id, pos=a.pos,
@@ -472,6 +502,7 @@ class World:
             self._spend(a.inventory, act.item or "", 1)
             a.hunger = _clamp(a.hunger - item.food)
             a.stamina = _clamp(a.stamina + item.stamina)
+            a.hp = _clamp(a.hp + item.hp)
             return [self._event("ate", actor=a.id, pos=a.pos, importance=1, item=act.item)]
         if k == "give_item":
             b = self.actors[act.target_id or ""]
@@ -488,6 +519,8 @@ class World:
         assert aff is not None
         a.stamina = _clamp(a.stamina - aff.stamina_cost)
         evs: list[WorldEvent] = []
+        if k in PHASE2_KINDS:
+            return self._effect_phase2(a, act, obj)
         if k == "plant":
             crop = self._crop_for_seed(act.item)
             self._spend(a.inventory, act.item or "", 1)
@@ -499,21 +532,14 @@ class World:
             crop = self.config.crops[crop_name]
             got = {crop_name: crop.yield_qty,
                    crop.seed: self.rng.randint(crop.seed_min, crop.seed_max)}
+            if self._has_tool(a, aff.requires_tool):
+                self._wear(a, aff.requires_tool)
             for item, n in got.items():
                 a.inventory[item] = a.inventory.get(item, 0) + n
             obj.data = {}
             self._set_state(obj, aff.to_state or "tilled")
             evs.append(self._event("harvested", actor=a.id, target=obj.id, pos=obj.pos,
                                    items=got, crop=crop_name))
-        elif k == "cook":
-            recipe = self.config.recipes[act.item or ""]
-            for item, n in {**recipe.inputs}.items():
-                self._spend(a.inventory, item, n)
-            for item, n in recipe.fuel.items():
-                self._spend(a.inventory, item, n)
-            a.inventory[recipe.output] = a.inventory.get(recipe.output, 0) + 1
-            evs.append(self._event("cooked", actor=a.id, target=obj.id, pos=obj.pos,
-                                   recipe=act.item))
         elif k in ("store", "take"):
             evs.extend(self._chest(a, obj, act))
         elif k == "trade":
@@ -530,19 +556,28 @@ class World:
             order = self._order(act.item)
             assert order is not None
             self._spend(a.inventory, order.item, order.qty)
-            a.inventory["coins"] = a.inventory.get("coins", 0) + order.reward
+            if order.poster_id:  # a villager's escrowed request
+                self._fulfill_villager_order(a, order)
+            else:
+                a.inventory["coins"] = a.inventory.get("coins", 0) + order.reward
             order.fulfilled_by = a.id
             self._bump(obj)
             evs.append(self._event("order_fulfilled", actor=a.id, target=obj.id, pos=obj.pos,
                                    importance=3, order=order.id, item=order.item,
-                                   qty=order.qty, reward=order.reward))
-        else:  # generic: chop / till / water / forage
-            got = self._gain(a, aff.yields, aff.yields_bonus)
+                                   qty=order.qty, reward=order.reward,
+                                   poster=order.poster_id))
+        else:  # generic: chop / till / water / forage / mine / gather_herb
+            yields, bonus = aff.yields, aff.yields_bonus
+            if aff.requires_tool:
+                if self._has_tool(a, aff.requires_tool):
+                    self._wear(a, aff.requires_tool)
+                else:  # soft gate: no bonus, or the bare-handed yield
+                    yields, bonus = (aff.yields_no_tool or aff.yields), {}
+            got = self._gain(a, yields, bonus)
             if aff.to_state:
                 self._set_state(obj, aff.to_state)
             evs.append(self._event(
-                {"chop": "chopped", "till": "tilled", "water": "watered",
-                 "forage": "foraged"}.get(k, k),
+                GENERIC_EVENT.get(k, k),
                 actor=a.id, target=obj.id, pos=obj.pos, importance=2 if got else 1, items=got,
             ))
         return evs
@@ -599,6 +634,7 @@ class World:
             target = 68.0 - max(0.0, a.hunger - 60.0) * 0.8 - (15.0 if a.stamina < 15 else 0.0)
             target -= {Weather.rain: 5.0, Weather.overcast: 2.0}.get(self.weather, 0.0)
             a.mood = _clamp(a.mood + (target - a.mood) * 0.01)
+        events.extend(self._tick_phase2())
         for a in self.actors.values():
             act = a.action
             if act is None:
@@ -666,6 +702,8 @@ class World:
         a.activity = "idle"
         reason = self._check(a, act)
         if reason:
+            if act.kind == "fight":
+                self.release_monster(a.id)
             self._bump(a)
             return [self._event("action_failed", actor=a.id, target=act.target_id, pos=a.pos,
                                 importance=1, action=act.kind, reason=reason)]
@@ -701,6 +739,7 @@ class World:
         if self.weather == Weather.rain:
             self._rain_waters()
         evs.append(self._event("weather", importance=1, weather=self.weather.value))
+        evs.extend(self._daily_phase2())  # refunds before expired orders are dropped
         evs.extend(self._post_orders())
         return evs
 
@@ -739,6 +778,8 @@ class World:
         kind = a.action.action.kind
         a.action = None
         a.activity = "idle"
+        if kind == "fight":
+            self.release_monster(actor_id)
         self._bump(a)
         return [self._event("action_interrupted", actor=a.id, pos=a.pos, importance=1,
                             action=kind, reason=reason)]
@@ -806,6 +847,13 @@ class World:
             "food_total": total(self._food),
             "wood_total": total({"wood"}),
             "coins_total": total({"coins"}),
+            "coin_supply": sum(self.coin_holdings().values()),
+            "monsters_total": sum(o.kind == "monster" for o in objs),
+            "monsters_roaming": sum(o.kind == "monster" and o.state == "roaming" for o in objs),
+            "ore_rich": sum(o.kind == "ore_node" and o.state == "rich" for o in objs),
+            "herbs_ripe": sum(o.kind == "herb_patch" and o.state == "ripe" for o in objs),
+            "shop_stock": sum(sum(o.data.get("stock", {}).values()) for o in objs
+                              if o.kind in ("shop_counter", "guild_counter")),
         }
 
     def snapshot(self) -> dict[str, Any]:

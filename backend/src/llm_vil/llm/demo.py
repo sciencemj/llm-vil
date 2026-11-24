@@ -13,9 +13,13 @@ from typing import Any
 
 from .protocol import HashingEmbedder, LLMRequest, LLMResponse, dumps, estimate_tokens, stable_unit
 
-COOKED = ("turnip_soup", "berry_stew", "bread")
+COOKED = ("roast_meat", "turnip_soup", "berry_stew", "bread")
 RAW = ("turnip", "berry")
-RECIPE_PREF = ("turnip_soup", "berry_stew", "bread")
+RECIPE_PREF = ("roast_meat", "turnip_soup", "berry_stew", "bread")
+FOOD_BUY_PREF = ("bread", "turnip_soup", "berry_stew", "roast_meat", "turnip", "boar_meat",
+                 "berry")
+KEEP = {"turnip": 3, "wood": 2, "herb": 0, "wheat": 0, "berry": 3, "bread": 2,
+        "turnip_soup": 1, "berry_stew": 1, "roast_meat": 1}
 TOPICS = ("안부", "농사", "날씨", "장터", "마을 소문", "요리", "숲")
 OPENERS = {
     "안부": "요즘 어떻게 지내?",
@@ -40,7 +44,14 @@ CLOSERS = ("그럼 이만 가볼게, 또 보자!", "얘기 즐거웠어. 다음�
 WORK = {"farm": "tend_farm", "wood": "chop_wood", "forage": "forage"}
 
 
-COIN_CUSHION = 30  # villagers keep about this much; the rest circulates at the stall
+PROFESSION_WORK = {
+    "farmer": "tend_farm", "woodcutter": "chop_wood", "chef_innkeeper": "cook_meal",
+    "merchant": "stock_shop", "herbalist": "gather_herb", "baker": "craft",
+    "blacksmith": "craft", "miner": "mine", "adventurer": "hunt", "guildmaster": "post_bounty",
+}
+COIN_CUSHION = 30    # villagers keep about this much; the rest circulates at the stall
+LUXURY_COINS = 70    # above this, villagers treat themselves at other villagers' shops
+PRODUCTION_CAP = 8   # producers pause a good once they hold this many unsold
 
 
 class DemoBackend:
@@ -75,8 +86,9 @@ class DemoBackend:
         w, sl = s["wake_minute"], s["sleep_minute"]
         bias = s["work_bias"]
         ranked = sorted(bias, key=lambda k: (-bias[k], k))
-        primary = WORK[ranked[0]]
-        secondary = WORK[ranked[1 if stable_unit(s["id"], c["day"], "plan") < 0.6 else 2]]
+        primary = PROFESSION_WORK.get(s.get("profession", ""), WORK[ranked[0]])
+        secondary = primary if s.get("profession") in PROFESSION_WORK else WORK[
+            ranked[1 if stable_unit(s["id"], c["day"], "plan") < 0.6 else 2]]
         plots_need = any(v in ("untilled", "tilled", "planted", "ready")
                          for v in c["plots"].values())
         first = "tend_farm" if plots_need else primary
@@ -120,7 +132,10 @@ class DemoBackend:
                 items = opts["cook_meal"]["items"]
                 recipe = next(r for r in RECIPE_PREF if r in items)
                 return pick("cook_meal", item=recipe, reason="배고파서 요리")
-            for food in RAW:
+            buy = self._buy_food(c, pick)
+            if buy is not None:
+                return buy
+            for food in (*RAW, "boar_meat"):
                 if food in eat_items:
                     return pick("eat_food", "none", item=food, reason="배고픔")
             if "forage" in opts:
@@ -135,8 +150,21 @@ class DemoBackend:
                 return pick("tend_farm", "my_plots", reason="작물을 키워야 함")
             return pick("wander", "forest", reason="먹을 것 찾기", expression="sad")
 
+        if c.get("hp", 100) < 45 and "use_potion" in opts and (
+            "heal_potion" in opts["use_potion"]["items"]
+        ):
+            return pick("use_potion", "none", item="heal_potion", reason="상처 치료")
+
         if needs["stamina"] < th["tired"]:
+            if "use_potion" in opts and "stamina_potion" in opts["use_potion"]["items"] and (
+                needs["stamina"] < 15
+            ):
+                return pick("use_potion", "none", item="stamina_potion", reason="기력 회복")
             return pick("rest", reason="지침", expression="tired")
+
+        if "repair_tool" in opts:
+            return pick("repair_tool", item=opts["repair_tool"]["items"][0],
+                        reason="도구 수리", expression="neutral")
 
         has_cooked = any(f in eat_items for f in COOKED)
         if not has_cooked and "cook_meal" in opts and (600 <= m < 720 or 990 <= m < 1080):
@@ -144,9 +172,30 @@ class DemoBackend:
             return pick("cook_meal", item=next(r for r in RECIPE_PREF if r in items),
                         reason="끼니 준비")
 
+        food_held = sum(n for f, n in inv.items() if f in (*COOKED, *RAW, "boar_meat"))
+        if food_held == 0 and needs["hunger"] >= 25:
+            buy = self._buy_food(c, pick)
+            if buy is not None:
+                return buy
+
         if "post_or_fulfill_order" in opts:
             return pick("post_or_fulfill_order", item=opts["post_or_fulfill_order"]["items"][0],
                         reason="주문 해결")
+
+        if inv.get("coins", 0) >= LUXURY_COINS and u("treat") < 0.3:
+            treat = self._treat(c, pick)
+            if treat is not None:
+                return treat
+
+        req = self._request_missing(c, pick, u)
+        if req is not None:
+            return req
+
+        social_time = (690 <= m < 780 or 1020 <= m < 1140)
+        if not social_time or u("work_first") < 0.5:
+            job = self._profession(c, pick, u)
+            if job is not None:
+                return job
 
         prices = c.get("item_prices") or {}
 
@@ -162,9 +211,13 @@ class DemoBackend:
             if seeds < 2 and "turnip_seed" in items and seed_price:
                 return pick("trade", item="turnip_seed", op="buy",
                             qty=max(1, min(3, coins // seed_price)), reason="씨앗 보충")
-            if inv.get("wood", 0) > 6 and "wood" in items:
-                return pick("trade", item="wood", op="sell", qty=inv["wood"] - 4,
-                            reason="남는 장작 팔기")
+            surplus = sorted(((n, i) for i, n in inv.items()
+                              if i in items and (prices.get(i) or {}).get("sell")
+                              and n > PRODUCTION_CAP), reverse=True)
+            if surplus:
+                n, item = surplus[0]
+                return pick("trade", item=item, op="sell", qty=min(20, n - 4),
+                            reason="남는 물건 상인에게 팔기")
             # coin sink: savings above a cushion go back into goods (no runaway hoarding)
             if coins >= COIN_CUSHION:
                 spend = coins - COIN_CUSHION // 2
@@ -223,6 +276,268 @@ class DemoBackend:
             return pick(works[-1][0], qty=3, reason="할 일")
         area = ("plaza", "pond", s["home_area"])[int(u("area") * 3)]
         return pick("wander", area, reason="산책", expression="neutral")
+
+    # ------------------------------------------------------------------ Phase 2
+    def _buy_food(self, c: dict[str, Any], pick: Any) -> dict[str, Any] | None:
+        opts = c["options"]
+        if "buy_from_shop" not in opts:
+            return None
+        coins = c["inventory"].get("coins", 0)
+        shops = c.get("shops", {})
+        best = None
+        for sid in opts["buy_from_shop"]["targets"]:
+            sh = shops.get(sid, {})
+            for rank, food in enumerate(FOOD_BUY_PREF):
+                if sh.get("stock", {}).get(food, 0) > 0 and coins >= sh["prices"].get(food, 99):
+                    cand = (rank, sh["prices"][food], sid, food)
+                    best = cand if best is None or cand < best else best
+        if best is None:
+            return None
+        _, price, sid, food = best
+        qty = 2 if coins >= price * 2 + 10 and shops[sid]["stock"].get(food, 0) >= 2 else 1
+        return pick("buy_from_shop", sid, item=food, qty=qty, reason="가게에서 먹을 것 사기")
+
+    def _treat(self, c: dict[str, Any], pick: Any) -> dict[str, Any] | None:
+        """Spend savings at the neighbours' shops (keeps coins circulating, lowers Gini)."""
+        inv = c["inventory"]
+        eq = c.get("equipment", {})
+        wants = []
+        if "combat" in c["self"].get("skills", []) and eq.get("armor", {}).get(
+            "durability", 0) <= 0:
+            wants.append(("armor", 1))
+        if "combat" in c["self"].get("skills", []) and inv.get("heal_potion", 0) < 2:
+            wants.append(("heal_potion", 1))
+        if sum(inv.get(f, 0) for f in COOKED) < 2:
+            wants += [("roast_meat", 1), ("turnip_soup", 1), ("berry_stew", 1), ("bread", 2)]
+        for item, q in wants:
+            buy = self._buy(c, pick, item, q, "모은 돈으로 장보기")
+            if buy is not None:
+                return buy
+        return None
+
+    def _request_missing(self, c: dict[str, Any], pick: Any, u: Any) -> dict[str, Any] | None:
+        """Post an escrowed request for a work input no known shop has in stock."""
+        opts = c["options"]
+        if "post_request" not in opts or u("request") > 0.25:
+            return None
+        if c["inventory"].get("coins", 0) < 40:
+            return None
+        shops = c.get("shops", {})
+        recipes = c.get("recipes", {})
+        inputs = sorted({i for r in recipes.values() for i in r.get("inputs", {})})
+        posted = {o["item"] for o in c["orders"] if not o.get("fulfilled_by")}
+        for item in inputs:
+            if item in posted or item not in opts["post_request"]["items"]:
+                continue
+            if c["inventory"].get(item, 0) > 0:
+                continue
+            if any(sh.get("stock", {}).get(item, 0) > 0 for sh in shops.values()):
+                continue
+            return pick("post_request", item=item, qty=2, reason=f"{item} 구함 의뢰")
+        return None
+
+    def _buy(self, c: dict[str, Any], pick: Any, item: str, qty: int,
+             reason: str) -> dict[str, Any] | None:
+        """Buy ``item`` from the cheapest known shop that has it (P2P economy)."""
+        opts = c["options"]
+        if "buy_from_shop" not in opts or item not in opts["buy_from_shop"]["items"]:
+            return None
+        coins = c["inventory"].get("coins", 0)
+        shops = c.get("shops", {})
+        cands = []
+        for sid in opts["buy_from_shop"]["targets"]:
+            sh = shops.get(sid, {})
+            n, price = sh.get("stock", {}).get(item, 0), sh.get("prices", {}).get(item, 999)
+            if n > 0 and coins >= price:
+                cands.append((price, sid, n))
+        if not cands:
+            return None
+        price, sid, n = min(cands)
+        q = max(1, min(qty, n, coins // price))
+        return pick("buy_from_shop", sid, item=item, qty=q, reason=reason)
+
+    def _stock(self, c: dict[str, Any], pick: Any) -> dict[str, Any] | None:
+        opts = c["options"]
+        if "stock_shop" not in opts:
+            return None
+        inv = c["inventory"]
+        shop = opts["stock_shop"]["targets"][0]
+        stock = c.get("shops", {}).get(shop, {}).get("stock", {})
+        for item in opts["stock_shop"]["items"]:
+            spare = inv.get(item, 0) - KEEP.get(item, 0)
+            if spare >= 1 and stock.get(item, 0) < 12:
+                return pick("stock_shop", shop, item=item, qty=min(spare, 12),
+                            reason="가게 진열")
+        return None
+
+    def _craft(self, c: dict[str, Any], pick: Any, prefs: tuple[str, ...]) -> dict[str, Any] | None:
+        opts = c["options"]
+        for key in ("craft", "cook_meal"):
+            o = opts.get(key)
+            if not o:
+                continue
+            recipes = c.get("recipes", {})
+            for r in prefs:
+                out = recipes.get(r, {}).get("output", r)
+                if c["inventory"].get(out, 0) >= PRODUCTION_CAP:
+                    continue  # enough on hand: sell first, don't flood the market
+                if r in o["items"]:
+                    station = recipes.get(r, {}).get("station")
+                    kinds = c.get("stations", {})
+                    target = next((t for t in o["targets"] if kinds.get(t) == station),
+                                  o["targets"][0])
+                    return pick(key, target, item=r, qty=2, reason="생업: 만들기")
+        return None
+
+    def _profession(self, c: dict[str, Any], pick: Any, u: Any) -> dict[str, Any] | None:
+        s = c["self"]
+        prof = s.get("profession", "villager")
+        opts = c["options"]
+        inv = c["inventory"]
+        coins = inv.get("coins", 0)
+        shops = c.get("shops", {})
+        own = shops.get(s.get("shop_id") or "", {}).get("stock", {})
+        bounties = [o for o in c["orders"] if o.get("kind") == "bounty"
+                    and not o.get("fulfilled_by")]
+        if prof == "farmer":
+            if "tend_farm" in opts:
+                return pick("tend_farm", "my_plots", reason="밭일")
+            if sum(inv.get(k, 0) for k in ("turnip_seed", "wheat_seed")) < 3:
+                buy = self._buy(c, pick, "turnip_seed", 3, "씨앗 사기")
+                if buy:
+                    return buy
+            return self._stock(c, pick)
+        if prof == "woodcutter":
+            if inv.get("wood", 0) >= 5 and own.get("charcoal", 0) < 4:
+                job = self._craft(c, pick, ("charcoal",))
+                if job:
+                    return job
+            job = self._stock(c, pick)
+            if job:
+                return job
+            if "chop_wood" in opts and inv.get("wood", 0) < PRODUCTION_CAP * 2:
+                return pick("chop_wood", "forest", qty=3, reason="벌목")
+            return None
+        if prof == "chef_innkeeper":
+            job = self._craft(c, pick, ("roast_meat", "turnip_soup", "berry_stew"))
+            if job:
+                return job
+            job = self._stock(c, pick)
+            if job:
+                return job
+            if inv.get("wood", 0) < 1:
+                buy = self._buy(c, pick, "wood", 3, "땔감 사기")
+                if buy:
+                    return buy
+            if coins >= 15:
+                for item, q in (("boar_meat", 2), ("turnip", 4)):
+                    buy = self._buy(c, pick, item, q, "식재료 사기")
+                    if buy:
+                        return buy
+                if "post_request" in opts and "boar_meat" in opts["post_request"]["items"] and (
+                    u("req") < 0.2
+                ):
+                    return pick("post_request", item="boar_meat", qty=2, reason="고기 의뢰")
+            if "forage" in opts:
+                return pick("forage", reason="스튜용 산딸기")
+            return None
+        if prof == "merchant":
+            if "run_stall" in opts:
+                items = opts["run_stall"]["items"]
+                item = items[int(u("stall") * len(items))]
+                price = (c.get("item_prices", {}).get(item) or {}).get("buy") or 1
+                return pick("run_stall", item=item, qty=max(1, min(6, (coins - 10) // price)),
+                            reason="상단에서 물건 떼기")
+            return self._stock(c, pick)
+        if prof == "herbalist":
+            job = self._craft(c, pick, ("heal_potion", "stamina_potion"))
+            if job and (job["item"] == "heal_potion" or own.get("stamina_potion", 0) < 3):
+                return job
+            job = self._stock(c, pick)
+            if job:
+                return job
+            if inv.get("herb", 0) >= 2 and inv.get("slime_gel", 0) < 1:
+                buy = self._buy(c, pick, "slime_gel", 2, "슬라임 젤 사기")
+                if buy:
+                    return buy
+            if not any(inv.get(f, 0) for f in ("wood", "charcoal")):
+                buy = self._buy(c, pick, "wood", 2, "땔감 사기")
+                if buy:
+                    return buy
+            if "gather_herb" in opts and inv.get("herb", 0) < PRODUCTION_CAP:
+                return pick("gather_herb", "pond", qty=2, reason="약초 채집")
+            return None
+        if prof == "baker":
+            job = self._craft(c, pick, ("bread",))
+            if job:
+                return job
+            job = self._stock(c, pick)
+            if job:
+                return job
+            if inv.get("wheat", 0) < 2:
+                buy = self._buy(c, pick, "wheat", 4, "밀 사기")
+                if buy:
+                    return buy
+            if not any(inv.get(f, 0) for f in ("wood", "charcoal")):
+                buy = self._buy(c, pick, "charcoal", 2, "숯 사기") or self._buy(
+                    c, pick, "wood", 2, "땔감 사기")
+                if buy:
+                    return buy
+            return None
+        if prof == "blacksmith":
+            wanted = tuple(t for t in ("sword", "pickaxe", "axe", "hoe", "armor")
+                           if own.get(t, 0) < 1)
+            job = self._craft(c, pick, ("iron_ingot_from_goblin", *wanted))
+            if job:
+                return job
+            job = self._stock(c, pick)
+            if job:
+                return job
+            if "armor" in wanted and inv.get("boar_hide", 0) < 2:
+                buy = self._buy(c, pick, "boar_hide", 2 - inv.get("boar_hide", 0), "가죽 사기")
+                if buy:
+                    return buy
+            if wanted and inv.get("iron_ore", 0) < 3:
+                buy = self._buy(c, pick, "iron_ore", 3, "철광석 사기") or self._buy(
+                    c, pick, "goblin_ore", 1, "고블린 광석 사기")
+                if buy:
+                    return buy
+            if wanted and not any(inv.get(f, 0) for f in ("coal", "charcoal", "wood")):
+                buy = self._buy(c, pick, "coal", 2, "석탄 사기")
+                if buy:
+                    return buy
+            return None
+        if prof == "miner":
+            job = self._stock(c, pick)
+            if job and inv.get(job["item"], 0) >= 3:
+                return job
+            if "mine" in opts and inv.get("iron_ore", 0) < PRODUCTION_CAP * 2:
+                return pick("mine", "quarry", qty=2, reason="채굴")
+            return job
+        if prof == "adventurer":
+            if "sell_drops" in opts:
+                return pick("sell_drops", item="all", reason="전리품 팔기")
+            eq = c.get("equipment", {})
+            if eq.get("weapon", {}).get("durability", 0) <= 0:
+                buy = self._buy(c, pick, "sword", 1, "검 사기")
+                if buy:
+                    return buy
+            if inv.get("heal_potion", 0) < 1 and coins >= 25:
+                buy = self._buy(c, pick, "heal_potion", 1, "물약 준비")
+                if buy:
+                    return buy
+            if "hunt" in opts:
+                species = next((b["item"] for b in bounties), "any")
+                return pick("hunt", "mosswood", item=species, qty=3, reason="사냥",
+                            expression="happy")
+            return None
+        if prof == "guildmaster":
+            if "post_bounty" in opts and 480 <= c["minute"] < 600:
+                items = opts["post_bounty"]["items"]
+                return pick("post_bounty", item=items[int(u("bounty") * len(items))],
+                            reason="현상금 게시")
+            return None
+        return None
 
     def _take_food(self, c: dict[str, Any], u: Any) -> dict[str, Any] | None:
         opts = c["options"]
@@ -295,10 +610,32 @@ class DemoBackend:
             utter = REPLIES[int(u("reply") * len(REPLIES))]
         if gift != "none":
             utter += f" 아, 이거 {gift} 좀 가져가."
+        offer = {"offer_give_item": "none", "offer_give_qty": 0, "offer_want_item": "none",
+                 "offer_want_qty": 0, "trade_response": "none"}
+        pend = c.get("pending_offer")
+        inv = c.get("inventory", {})
+        if pend:
+            wanted = pend["give_item"] in c.get("wanted_items", [])
+            values = c.get("item_values", {})
+            fair = values.get(pend["give_item"], 1) * pend["give_qty"] >= (
+                values.get(pend["want_item"], 1) if pend["want_item"] != "coins" else 1
+            ) * pend["want_qty"] * 0.8
+            can = inv.get(pend["want_item"], 0) - (10 if pend["want_item"] == "coins" else 0)
+            ok = wanted and fair and can >= pend["want_qty"]
+            offer["trade_response"] = "accept" if ok else "decline"
+            utter = ("좋아, 그렇게 바꾸자!" if ok else "음, 이번엔 사양할게.") + " " + utter
+        elif 1 <= idx <= 3 and not end and c.get("surplus") and u("barter") < 0.35:
+            values = c.get("item_values", {})
+            item = max(sorted(c["surplus"]), key=lambda i: c["surplus"][i] * values.get(i, 1))
+            qty = max(1, min(4, c["surplus"][item]))
+            offer.update(offer_give_item=item, offer_give_qty=qty, offer_want_item="coins",
+                         offer_want_qty=max(1, values.get(item, 1) * qty))
+            utter += f" 혹시 {item} {qty}개, {offer['offer_want_qty']}코인에 살래?"
         importance = 3 + (2 if gift != "none" else 0) + (2 if share != "none" else 0)
         return {"utterance": utter, "end_conversation": end, "emotion": emotion,
                 "valence": valence, "importance": min(10, importance),
-                "facing_cue": "face_partner", "gift_item": gift, "share_memory_id": share}
+                "facing_cue": "face_partner", "gift_item": gift, "share_memory_id": share,
+                **offer}
 
     # ------------------------------------------------------------------ reflect
     def _reflect(self, c: dict[str, Any]) -> dict[str, Any]:

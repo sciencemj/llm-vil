@@ -1,13 +1,13 @@
 import type { WorldStore } from "../state/store";
 import type { AgentDetail, RelationshipAxes } from "../state/types";
-import { ACTIVITY_KO, el, fmtClock, fmtTick, ITEM_KO, ko, ROUTINE_KO } from "./util";
+import { ACTIVITY_KO, el, EQUIP_SLOT_KO, fmtClock, fmtTick, ITEM_KO, ko, PROFESSION_KO, ROUTINE_KO } from "./util";
 
 const MEMORY_KO: Record<string, string> = {
   observation: "관찰", conversation: "대화", hearsay: "소문", plan: "계획", summary: "요약",
   fact: "사실", external_event: "사건", reflection: "성찰", goal: "목표",
 };
-const NEED_COLORS: Record<string, string> = { stamina: "#6f9a4a", hunger: "#d9822b", mood: "#5b8fd1" };
-const NEED_KO: Record<string, string> = { stamina: "기력", hunger: "배고픔", mood: "기분" };
+const NEED_COLORS: Record<string, string> = { hp: "#c8574d", stamina: "#6f9a4a", hunger: "#d9822b", mood: "#5b8fd1" };
+const NEED_KO: Record<string, string> = { hp: "체력", stamina: "기력", hunger: "배고픔", mood: "기분" };
 const AXES: [keyof RelationshipAxes, string, boolean][] = [
   ["familiarity", "친밀", false],
   ["affection", "호감", true],
@@ -185,16 +185,71 @@ export class Inspector {
     const plan = d.plan.map((b) =>
       el("li", {}, el("span", { class: "k" }, `${fmtClock(b.start_minute)}–${fmtClock(b.end_minute)}`), `${ko(ROUTINE_KO, b.routine)} · ${b.note}`),
     );
+    const equipEntries = Object.entries(d.equipment ?? {});
+    const equipSection = equipEntries.length
+      ? [
+          el("h3", {}, "장비 & 내구도"),
+          ...equipEntries.map(([slot, eq]) => {
+            const pct = eq.max_durability > 0 ? Math.round((eq.durability / eq.max_durability) * 100) : 0;
+            const color = pct <= 25 ? "#c8574d" : pct <= 55 ? "#d9822b" : "#6f9a4a";
+            return el(
+              "div",
+              { class: "equip-row" },
+              el("span", { class: "k" }, ko(EQUIP_SLOT_KO, slot)),
+              el("span", { class: "ename" }, ko(ITEM_KO, eq.item)),
+              el("div", { class: "track" }, el("div", { class: "fill", style: `width:${pct}%;background:${color}` })),
+              el("span", { class: "dur" }, `${eq.durability}/${eq.max_durability}`),
+            );
+          }),
+        ]
+      : [];
+    const shopList = d.shops ?? [];
+    const shopSection = shopList.length
+      ? [
+          el("h3", {}, "운영 상점 재고/가격"),
+          ...shopList.map((s) => {
+            const items = Object.entries(s.stock).filter(([, qty]) => qty > 0);
+            return el(
+              "div",
+              { class: "shop-card" },
+              el(
+                "div",
+                { class: "shop-head" },
+                el("b", {}, s.name),
+                el("span", { class: `badge ${s.open ? "st-ok" : "st-fallback"}` }, s.open ? "영업 중" : "휴업"),
+                typeof s.treasury === "number" ? el("span", { class: "k" }, `금고 ${s.treasury}🪙`) : null,
+              ),
+              el(
+                "div",
+                { class: "chips" },
+                ...(items.length
+                  ? items.map(([item, qty]) => {
+                      const p = s.prices[item];
+                      return el("span", {}, `${ko(ITEM_KO, item)} ×${qty}${p ? ` (${p}🪙)` : ""}`);
+                    })
+                  : [el("span", { class: "k" }, "진열된 상품 없음")]),
+              ),
+            );
+          }),
+        ]
+      : [];
+    const profBadge = d.profession
+      ? el("span", { class: "badge prof-badge" }, ko(PROFESSION_KO, d.profession))
+      : null;
+    const faintBadge = d.fainted ? el("span", { class: "badge faint-badge" }, "💫 기절 회복 중") : null;
     this.root.replaceChildren(
       close,
-      el("h2", {}, `${d.name}`),
+      el("h2", { class: "title-row" }, `${d.name}`, profBadge, faintBadge),
       el("div", { class: "persona" }, `${d.age}세 · ${d.occupation} · ${d.in_conversation ? "💬 대화 중" : ko(ACTIVITY_KO, d.activity)}`),
       el("div", { class: "traits" }, ...d.traits.map((t) => el("span", {}, t))),
       el("div", { class: "persona" }, d.persona),
       el("h3", {}, "지금 하는 일"),
       el("div", { class: "persona" }, routine, d.routine?.reason ? el("span", { class: "sum" }, ` (${d.routine.reason})`) : null),
       el("h3", {}, "상태"),
+      bar(NEED_KO.hp, d.needs.hp ?? 100, 100, NEED_COLORS.hp),
       ...(["stamina", "hunger", "mood"] as const).map((k) => bar(NEED_KO[k], d.needs[k], 100, NEED_COLORS[k])),
+      ...equipSection,
+      ...shopSection,
       el("h3", {}, "소지품"),
       el("div", { class: "chips" }, ...Object.entries(d.inventory).map(([k, v]) => el("span", {}, `${ko(ITEM_KO, k)} ×${v}`))),
       el("h3", {}, "삶의 목표"),

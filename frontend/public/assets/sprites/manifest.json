@@ -255,6 +255,206 @@
         4,
         4
       ]
+    },
+    "villager_taeo": {
+      "file": "villager_taeo.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_gangcheol": {
+      "file": "villager_gangcheol.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_bawi": {
+      "file": "villager_bawi.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_rina": {
+      "file": "villager_rina.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "villager_hyeonwoo": {
+      "file": "villager_hyeonwoo.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 24,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "monster_slime": {
+      "file": "monster_slime.png",
+      "frameWidth": 14,
+      "frameHeight": 14,
+      "slices": 10,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "monster_boar": {
+      "file": "monster_boar.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "monster_goblin": {
+      "file": "monster_goblin.png",
+      "frameWidth": 14,
+      "frameHeight": 14,
+      "slices": 16,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "bakery_oven": {
+      "file": "bakery_oven.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 22,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "forge_anvil": {
+      "file": "forge_anvil.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 20,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "kiln": {
+      "file": "kiln.png",
+      "frameWidth": 18,
+      "frameHeight": 18,
+      "slices": 20,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "cauldron": {
+      "file": "cauldron.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 16,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "ore_node_full": {
+      "file": "ore_node_full.png",
+      "frameWidth": 18,
+      "frameHeight": 18,
+      "slices": 14,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "ore_node_empty": {
+      "file": "ore_node_empty.png",
+      "frameWidth": 18,
+      "frameHeight": 18,
+      "slices": 8,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "herb_patch_full": {
+      "file": "herb_patch_full.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 10,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "herb_patch_empty": {
+      "file": "herb_patch_empty.png",
+      "frameWidth": 16,
+      "frameHeight": 16,
+      "slices": 6,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "shop_counter": {
+      "file": "shop_counter.png",
+      "frameWidth": 20,
+      "frameHeight": 20,
+      "slices": 16,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "gate_wood": {
+      "file": "gate_wood.png",
+      "frameWidth": 18,
+      "frameHeight": 18,
+      "slices": 22,
+      "footprintTiles": [
+        1,
+        1
+      ]
+    },
+    "guild_hall": {
+      "file": "guild_hall.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "slices": 36,
+      "footprintTiles": [
+        4,
+        4
+      ]
+    },
+    "tavern": {
+      "file": "tavern.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "slices": 36,
+      "footprintTiles": [
+        4,
+        4
+      ]
     }
   }
 }

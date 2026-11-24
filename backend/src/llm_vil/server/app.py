@@ -443,13 +443,16 @@ def main() -> None:
                         help="embeddings profile: local | demo | openai_compat")
     parser.add_argument("--save", default=os.environ.get("LLM_VIL_SAVE"),
                         help="SQLite save path (enables checkpoints)")
+    parser.add_argument("--fresh", action="store_true",
+                        help="reset any existing save file and start a fresh village")
     args = parser.parse_args()
     import uvicorn
 
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
     app = create_app(speed=args.speed, paused=args.paused, store_path=args.save,
-                     llm_profile=args.llm_profile, embed_profile=args.embed_profile)
+                     fresh=args.fresh, llm_profile=args.llm_profile,
+                     embed_profile=args.embed_profile)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

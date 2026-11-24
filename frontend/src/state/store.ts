@@ -36,11 +36,12 @@ export class WorldStore {
   replaying = false;
   /** Replay is auto-playing fast enough that speech bubbles should be condensed. */
   replayCondensed = false;
-  width = 32;
-  height = 24;
+  width = 40;
+  height = 30;
   name = "";
   water: number[][] = [];
   areas: Area[] = [];
+  metrics: Record<string, number> = {};
   clock: Clock = { tick: 0, day: 0, minute: 0, speed: 1, paused: true, weather: "sunny", merchant_present: false };
   clockReceivedAt = 0;
   simMinutesPerSecond = 2;
@@ -96,6 +97,7 @@ export class WorldStore {
         }),
       );
       this.relationships = msg.relationships;
+      this.metrics = msg.metrics ?? {};
       this.timeline = msg.events.slice(-MAX_TIMELINE);
       this.timelineSeq += 1;
       this.ready = true;
@@ -150,6 +152,7 @@ export class WorldStore {
           o.state = d.state;
           o.version = d.version;
           if (d.data) o.data = d.data;
+          if (d.pos) o.pos = d.pos;
         } else {
           this.needsResync = true;
         }

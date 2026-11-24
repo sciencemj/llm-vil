@@ -157,20 +157,33 @@ canvas.addEventListener(
   },
   { passive: false },
 );
-window.addEventListener("keydown", (e) => {
-  const t = e.target;
-  if (
+const heldMove = new Set<string>();
+const MOVE_KEYS: Record<string, [number, number]> = {
+  w: [0, 1],
+  s: [0, -1],
+  a: [1, 0],
+  d: [-1, 0],
+  arrowup: [0, 1],
+  arrowdown: [0, -1],
+  arrowleft: [1, 0],
+  arrowright: [-1, 0],
+};
+
+function isEditableTarget(t: EventTarget | null): boolean {
+  return (
     t instanceof HTMLInputElement ||
     t instanceof HTMLSelectElement ||
     t instanceof HTMLTextAreaElement ||
     (t instanceof HTMLElement && t.isContentEditable)
-  ) {
-    return;
-  }
-  const PAN: Record<string, [number, number]> = { w: [0, 1], s: [0, -1], a: [1, 0], d: [-1, 0] };
-  const pan = PAN[e.key.toLowerCase()];
-  if (pan) {
-    scene.panBy(pan[0] * 120, pan[1] * 120); // screen-relative, works at any camera angle
+  );
+}
+
+window.addEventListener("keydown", (e) => {
+  if (isEditableTarget(e.target)) return;
+  const k = e.key.toLowerCase();
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && k in MOVE_KEYS) {
+    if (k.startsWith("arrow")) e.preventDefault();
+    heldMove.add(k);
     return;
   }
   if (e.key === "q" || e.key === "Q") scene.camera.rotate(-15);
@@ -186,6 +199,12 @@ window.addEventListener("keydown", (e) => {
     if (savesPanel.open) savesPanel.toggle(false);
     god.toggle(false);
   }
+});
+window.addEventListener("keyup", (e) => {
+  heldMove.delete(e.key.toLowerCase());
+});
+window.addEventListener("blur", () => {
+  heldMove.clear();
 });
 window.addEventListener("resize", () => scene.resize());
 
@@ -205,8 +224,37 @@ window.addEventListener("pagehide", () => {
 });
 
 // ---------------------------------------------------------------- loop
+const PAN_SPEED = 560; // screen px/sec
+const PAN_DAMP = 14; // exponential smoothing rate
+let panVx = 0;
+let panVy = 0;
+let lastFrame = 0;
 let lastHud = 0;
 function loop(now: number): void {
+  const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
+  lastFrame = now;
+  let tx = 0;
+  let ty = 0;
+  for (const k of heldMove) {
+    const d = MOVE_KEYS[k];
+    if (d) {
+      tx += d[0];
+      ty += d[1];
+    }
+  }
+  const len = Math.hypot(tx, ty);
+  const targetVx = len > 0 ? (tx / len) * PAN_SPEED : 0;
+  const targetVy = len > 0 ? (ty / len) * PAN_SPEED : 0;
+  const alpha = 1 - Math.exp(-PAN_DAMP * dt);
+  panVx += (targetVx - panVx) * alpha;
+  panVy += (targetVy - panVy) * alpha;
+  if (Math.hypot(panVx, panVy) > 2) {
+    scene.panBy(panVx * dt, panVy * dt);
+  } else if (len === 0) {
+    panVx = 0;
+    panVy = 0;
+  }
+
   scene.frame(now);
   if (now - lastHud > 200) {
     lastHud = now;
