@@ -77,6 +77,13 @@ class LLMBundle:
     pricing: dict[str, Pricing] = field(default_factory=dict)
     runtime: dict[str, Any] = field(default_factory=dict)
     timeout_s: float | None = None  # profile timeout; runtime.timeout_seconds is the fallback
+    profile_concurrency: int | None = None  # profile max_concurrency (e.g. 1-2 for Ollama)
+
+    @property
+    def max_concurrency(self) -> int:
+        """Parallel LLM calls allowed by the shared rate gate (profile > runtime > 5)."""
+        value = self.profile_concurrency or self.runtime.get("max_concurrency") or 5
+        return max(1, int(value))
 
     @property
     def llm_timeout(self) -> float:
@@ -194,4 +201,6 @@ def build_bundle(llm_profile: str | None = None, embed_profile: str | None = Non
         profile=name, embed_profile=emb_name, pricing=_pricing(prof.get("pricing")),
         runtime=dict(cfg.get("runtime") or {}),
         timeout_s=float(prof["timeout_s"]) if prof.get("timeout_s") else None,
+        profile_concurrency=int(prof["max_concurrency"]) if prof.get("max_concurrency")
+        else None,
     )

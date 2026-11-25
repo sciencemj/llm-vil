@@ -18,7 +18,7 @@ you can rotate 360°. Inspired by Stardew Valley's daily life and Smallville's g
 
 ## Quickstart
 
-Requirements: Python 3.11+ with [uv](https://docs.astral.sh/uv/), Node 20+.
+Requirements: Python 3.11+ with [uv](https://docs.astral.sh/uv/), [bun](https://bun.sh) 1.x.
 
 ```bash
 # backend (FastAPI + WebSocket on 127.0.0.1:8780)
@@ -28,14 +28,32 @@ uv run llm-vil serve            # demo brain, saves to backend/saves/village.sql
 
 # frontend (Vite on 127.0.0.1:5173)
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
+
+The server **starts paused**: press `▶ 재생` in the app (or pass `--autostart`) to run it. It also
+auto-pauses after `--max-days` sim-days per run (default 7, `0` = unlimited; change it in
+`💾 저장`); pressing `▶ 재생` again grants another window of the same length.
+
+The save file is bounded: the newest `--max-checkpoints` (10) automatic daily saves are kept, while
+saves you make yourself are never pruned; the LLM tape, event log and embedding cache are capped
+by `storage:` in `backend/config/village.yaml`. New saves use `auto_vacuum=INCREMENTAL` so freed
+space goes back to the disk. Saves from older versions are converted on open when they are under
+256 MB; for larger ones stop the server and run
+`sqlite3 FILE 'PRAGMA auto_vacuum=INCREMENTAL; VACUUM;'` once (needs free disk of about the file's
+size). The memory archive keeps every archived memory and still grows with sim time.
 
 Open the URL Vite prints. Restarting `llm-vil serve` resumes the latest checkpoint
 (`--fresh` starts a new village and wipes that save; `--memory-only` runs without a save file).
 Restoring a checkpoint rewinds linearly: later checkpoints and their log/archive are removed.
-`--speed 4`, `--paused`, `--llm-profile NAME`, `--embed-profile local|demo` are also available.
+With a real LLM the live village waits at a **decision barrier**: when villagers are
+thinking, the sim minute holds (the top bar shows `💭 생각 중 (N명)`), and their decisions
+are then applied together on one tick so everyone starts moving at once. Each wait is bounded
+by the LLM timeout; set `clock.barrier_mode: false` in `backend/config/village.yaml` for the
+old behaviour (decisions applied as they arrive). Parallel calls are capped by
+`runtime.max_concurrency` (5) or a profile's own `max_concurrency` (2 for `ollama_local`).
+`--speed 4`, `--no-paused`, `--llm-profile NAME`, `--embed-profile local|demo` are also available.
 
 ## Providers & API keys
 
@@ -110,7 +128,7 @@ uv run ruff check
 uv run pytest            # unit, adapter (mock HTTP), server, security, snapshot/restore,
                          # async race and a 30-sim-day headless soak test
 cd ../frontend
-npm run build            # TypeScript typecheck + production build
+bun run build            # TypeScript typecheck + production build
 ```
 
 The soak test runs the demo village for 30 sim days (~10 s) and checks that nobody starves or gets

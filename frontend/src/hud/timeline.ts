@@ -67,6 +67,8 @@ export function describe(ev: TimelineEvent, store: WorldStore): { text: string; 
       return { text: `${who}이(가) 대장간에서 ${item(d.item)}을(를) 수리했다`, cls: "events" };
     case "price_set":
       return { text: `${who}이(가) ${item(d.item)} 가격을 ${String(d.price)}🪙로 정했다`, cls: "events" };
+    case "run_limit_reached":
+      return { text: `⏰ ${String(d.text ?? "최대 실행 일수에 도달해 자동 일시정지되었습니다")}`, cls: "events" };
     case "tax_paid":
       return { text: `${who}이(가) 마을 세금 ${String(d.coins)}🪙를 납부했다`, cls: "events" };
     case "ate":

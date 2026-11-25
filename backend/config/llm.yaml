@@ -43,6 +43,7 @@ profiles:
     smart_model: qwen2.5:14b-instruct
     structured: json_object
     timeout_s: 120
+    max_concurrency: 2           # a local GPU serves ~1-2 requests at a time
     pricing: {}
 
   anthropic:
@@ -93,7 +94,7 @@ embeddings:
       dim: 1536
 
 runtime:
-  max_concurrency: 4
+  max_concurrency: 5             # parallel LLM calls (cloud); per-profile max_concurrency wins
   timeout_seconds: 30
   json_repair_retries: 2
   retry_base_delay_s: 0.5

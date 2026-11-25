@@ -71,6 +71,13 @@ export interface Clock {
   merchant_present: boolean;
   ticks_per_day?: number;
   sim_minutes_per_real_second?: number;
+  /** villagers whose LLM decision is in flight; the server holds the tick meanwhile */
+  thinking_count?: number;
+  thinking_actors?: string[];
+  /** run window: the server auto-pauses after this many sim-days (null = unlimited) */
+  max_run_days?: number | null;
+  run_days_elapsed?: number;
+  limit_reached?: boolean;
 }
 
 export interface Area {

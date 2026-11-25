@@ -54,16 +54,37 @@ def event_payload(ev: WorldEvent) -> dict[str, Any]:
     return d
 
 
+MANUAL_LABEL = "수동 저장"  # a user's unnamed save must never be pruned as an automatic one
+MAX_RUN_DAYS = 3650
+UNSET: Any = object()
+
+
+def normalize_max_days(days: Any) -> int | None:
+    """``None`` / 0 = unlimited; anything else must be a whole number of days."""
+    if days is None:
+        return None
+    if isinstance(days, bool) or not 0 <= float(days) <= MAX_RUN_DAYS or float(days) % 1:
+        raise ValueError(f"days must be an integer between 0 and {MAX_RUN_DAYS}")
+    return int(days) or None
+
+
 class SimRuntime:
-    def __init__(self, engine: SimEngine, *, speed: float = 1.0, paused: bool = False,
-                 replay_cap: int = DEFAULT_CAP) -> None:
+    def __init__(self, engine: SimEngine, *, speed: float = 1.0, paused: bool = True,
+                 replay_cap: int = DEFAULT_CAP, max_run_days: int | None = UNSET) -> None:
         self.engine = engine
         self.speed = speed
         self.paused = paused
+        # run window: auto-pause after this many sim-days so nothing runs unattended forever
+        self.max_run_days = normalize_max_days(
+            engine.config.clock.max_run_days if max_run_days is UNSET else max_run_days)
+        self.limit_reached = False
+        self._window_start = engine.world.tick
         self.replay = ReplayRecorder(engine.store, replay_cap)
         self._tick_events: list[dict[str, Any]] = []
         self._speech: dict[str, tuple[int, str]] = {}
         self._fainted_until: dict[str, int] = {}
+        self._held = False  # last step was held at the decision barrier
+        self._last_thinking: list[str] = []
         self.clients: set[asyncio.Queue[dict[str, Any] | None]] = set()
         self._lock = asyncio.Lock()  # serializes engine.step() with client commands
         self.dropped_clients = 0
@@ -114,9 +135,11 @@ class SimRuntime:
                 await self._wake.wait()
                 continue
             manual = self.paused and self._step_budget > 0
-            await self.tick_once()
+            if not await self.tick_once():
+                await asyncio.sleep(0)  # held at the decision barrier: no pacing, no budget
+                continue
             if manual:
-                self._step_budget -= 1
+                self._step_budget = max(0, self._step_budget - 1)
                 await asyncio.sleep(0)  # never starve REST / WebSocket handlers
             else:
                 w = self.engine.world
@@ -124,18 +147,77 @@ class SimRuntime:
                 await self.pacer.pace(all_asleep and not self.engine.jobs)
                 await asyncio.sleep(0)
 
-    async def tick_once(self) -> None:
+    async def tick_once(self) -> bool:
+        """One engine step under the lock; False when the decision barrier held the tick."""
         async with self._lock:
-            await self._tick_locked()
+            return await self._tick_locked()
 
-    async def _tick_locked(self) -> None:
+    def _clock_msg(self) -> dict[str, Any]:
+        w = self.engine.world
+        thinking = self.engine.thinking_actors
+        return {"type": "clock", "tick": w.tick, "day": w.day, "minute": w.minute,
+                "speed": self.speed, "paused": self.paused, "weather": w.weather.value,
+                "merchant_present": w.merchant_present,
+                "thinking_count": len(thinking), "thinking_actors": thinking,
+                **self._limit_fields()}
+
+    # ------------------------------------------------------------ run window (max days)
+    def _limit_fields(self) -> dict[str, Any]:
+        return {"max_run_days": self.max_run_days,
+                "run_days_elapsed": round(self._run_days(), 3),
+                "limit_reached": self.limit_reached}
+
+    def _run_days(self) -> float:
         e = self.engine
-        await e.step()
+        return (e.world.tick - self._window_start) / e.config.ticks_per_day
+
+    def _new_window(self) -> None:
+        """(lock held) start counting days from now."""
+        self._window_start = self.engine.world.tick
+        self.limit_reached = False
+
+    def _check_limit(self) -> None:
+        """(lock held) pause exactly when the run window is used up."""
+        days = self.max_run_days
+        if days is None or self.limit_reached or self._run_days() < days:
+            return
+        self.limit_reached = True
+        self.paused = True
+        self._step_budget = 0
+        w = self.engine.world
+        notice = {"type": "event", "tick": w.tick, "kind": "run_limit_reached",
+                  "actor_id": None, "target_id": None, "pos": None, "importance": 5,
+                  "witnesses": [], "data": {
+                      "days": days,
+                      "text": f"최대 실행 일수({days}일)에 도달해 자동 일시정지되었습니다"}}
+        self.timeline.append(notice)
+        self._emit(notice)
+        self._emit(self._clock_msg())
+
+    def _reset_hold(self) -> None:
+        """(lock held) jobs were finished / cancelled outside a step: forget the held state
+        and tell clients the current thinking status right away."""
+        self.engine.reset_barrier()
+        self._held = False
+        self._last_thinking = list(self.engine.thinking_actors)
+        self._emit(self._clock_msg())
+
+    async def _tick_locked(self) -> bool:
+        e = self.engine
+        held = self._held
+        if not await e.step():
+            thinking = e.thinking_actors
+            if not held or thinking != self._last_thinking:  # status only on change
+                self._last_thinking = thinking
+                self._emit(self._clock_msg())
+                self._flush(force=True)
+            self._held = True
+            return False
+        self._held = False
+        self._last_thinking = []
         self._capture()
         w = e.world
-        self._emit({"type": "clock", "tick": w.tick, "day": w.day, "minute": w.minute,
-                    "speed": self.speed, "paused": self.paused, "weather": w.weather.value,
-                    "merchant_present": w.merchant_present})
+        self._emit(self._clock_msg())
         for d in e.drain_deltas():
             payload = d.model_dump(mode="json")
             if payload["type"] == "object_change":
@@ -158,7 +240,10 @@ class SimRuntime:
                 self._last_activity[aid] = a.activity
                 self._emit(self.agent_state(aid).model_dump(mode="json"))
         self._record_frame()
-        self._flush()
+        self._check_limit()
+        # barrier release / auto-pause: the batch leaves at once
+        self._flush(force=held or self.limit_reached)
+        return True
 
     # ------------------------------------------------------------ replay
     def _record_frame(self) -> None:
@@ -326,8 +411,11 @@ class SimRuntime:
 
     def health(self) -> dict[str, Any]:
         w = self.engine.world
+        thinking = self.engine.thinking_actors
         return {"ok": True, "day": w.day, "minute": w.minute, "tick": w.tick,
-                "speed": self.speed, "paused": self.paused, "actors_count": len(w.actors)}
+                "speed": self.speed, "paused": self.paused, "actors_count": len(w.actors),
+                "thinking_count": len(thinking), "thinking_actors": thinking,
+                "barrier_mode": self.engine.barrier_active, **self._limit_fields()}
 
     def snapshot(self) -> dict[str, Any]:
         e = self.engine
@@ -358,7 +446,9 @@ class SimRuntime:
                       "paused": self.paused, "weather": w.weather.value,
                       "merchant_present": w.merchant_present,
                       "ticks_per_day": cfg.ticks_per_day,
-                      "sim_minutes_per_real_second": cfg.clock.sim_minutes_per_real_second},
+                      "sim_minutes_per_real_second": cfg.clock.sim_minutes_per_real_second,
+                      "thinking_count": len(e.thinking_actors),
+                      "thinking_actors": e.thinking_actors, **self._limit_fields()},
             "objects": [w._obj_view(o).model_dump(mode="json") for o in w.objects.values()],
             "actors": actors,
             "relationships": {
@@ -473,8 +563,10 @@ class SimRuntime:
             raise ValueError("memory-only run: start the server with a save path to checkpoint")
         async with self._lock:
             await e.quiesce()  # finish (not cancel) in-flight thoughts: nothing is lost
-            cid = e.checkpoint(label.strip())
+            cid = e.checkpoint(label.strip() or MANUAL_LABEL)
             self.replay.flush()  # buffered frames up to the save point are on disk too
+            self._reset_hold()
+            self._flush(force=True)
         meta = e.store.checkpoint_meta(cid, e.config.ticks_per_day)
         assert meta is not None
         return meta
@@ -534,19 +626,24 @@ class SimRuntime:
         self._speech.clear()
         self._fainted_until.clear()
         self._tick_events = []
-        snap = self.snapshot()
+        self.engine.reset_barrier()
+        self._held = False
+        self._last_thinking = []
+        self._new_window()  # the clock jumped: count days from the restored point
+        snap = self.snapshot()  # carries thinking_count / thinking_actors
         for q in list(self.clients):
             q.put_nowait(snap)
 
     # ------------------------------------------------------------ provider hot-swap
     async def switch_llm(self, llm: Any, embedder: Any, *, pricing: Any = None,
-                         timeout: float | None = None, retries: int | None = None) -> None:
+                         timeout: float | None = None, retries: int | None = None,
+                         max_concurrency: int | None = None) -> None:
         """Swap the live LLM + embedder under the engine lock.
 
         In-flight cognition is cancelled (and re-queued), awaited, and only then are the old
         HTTP clients closed, so no request ever runs against a closed client.
         """
-        from ..llm.protocol import Observability, RouterStats
+        from ..llm.protocol import Observability, RouterStats, SharedRateGate
 
         async with self._lock:
             e = self.engine
@@ -561,6 +658,9 @@ class SimRuntime:
                 router.timeout = timeout
             if retries is not None:
                 router.retries = retries
+            e.update_barrier_timeout(router.timeout, router.retries)
+            if max_concurrency is not None:  # safe: nothing is in flight after quiesce()
+                router.gate = SharedRateGate(max_concurrency)
             router.obs = Observability(pricing)  # fresh telemetry for the new profile
             router.stats = RouterStats()
             if embedder is not old_embedder:
@@ -570,6 +670,7 @@ class SimRuntime:
             self._emit({"type": "llm_switched",
                         "provider": getattr(llm, "provider", "demo"),
                         "model": getattr(llm, "model", "?")})
+            self._reset_hold()
             self._flush(force=True)
         if old_llm is not llm:
             aclose = getattr(old_llm, "aclose", None)
@@ -595,8 +696,14 @@ class SimRuntime:
             if cmd == "pause":
                 self.paused = True
             elif cmd == "resume":
+                if self.limit_reached:
+                    self._new_window()  # ▶ after the limit grants another N days
                 self.paused = False
                 self._wake.set()
+            elif cmd == "set_max_days":
+                self.max_run_days = normalize_max_days(msg["days"])
+                self.limit_reached = False  # re-evaluated against the new limit
+                self._check_limit()
             elif cmd == "set_speed":
                 speed = float(msg["speed"])
                 if speed not in ALLOWED_SPEEDS:
@@ -604,13 +711,16 @@ class SimRuntime:
                 self.speed = speed
                 self.pacer.set_speed(speed)
             elif cmd == "step":
+                if self.limit_reached:
+                    raise ValueError("최대 실행 일수에 도달했습니다. ▶ 재생을 눌러 계속하세요")
                 self._step_budget += max(1, min(1440, int(msg.get("ticks", 1))))
                 self._wake.set()
             elif cmd == "checkpoint":
                 if e.store is None:
                     raise ValueError("no save store configured")
                 await e.quiesce()
-                e.checkpoint(str(msg.get("label") or "")[:80])
+                e.checkpoint(str(msg.get("label") or "").strip()[:80] or MANUAL_LABEL)
+                self._reset_hold()
             elif cmd == "god_weather":
                 e.set_weather(Weather(str(msg["weather"]).lower()))
             elif cmd == "god_spawn":
@@ -620,6 +730,10 @@ class SimRuntime:
                 if not text:
                     raise ValueError("empty event text")
                 e.inject_event(text[:200])
+                if e._blocking_jobs():
+                    self._emit(self._clock_msg())  # mid-barrier: the wait keeps its deadline
+                else:
+                    self._reset_hold()
             elif cmd == "god_rumor":
                 target, about = str(msg["target"]), str(msg["about"])
                 if target not in e.agents or about not in e.agents or target == about:
@@ -637,11 +751,8 @@ class SimRuntime:
                 if obj is not None:
                     payload["data"] = e.world._obj_view(obj).data
             self._emit(payload)
-        if cmd in ("pause", "resume", "set_speed", "god_weather"):
-            w = e.world
-            self._emit({"type": "clock", "tick": w.tick, "day": w.day, "minute": w.minute,
-                        "speed": self.speed, "paused": self.paused, "weather": w.weather.value,
-                        "merchant_present": w.merchant_present})
+        if cmd in ("pause", "resume", "set_speed", "set_max_days", "god_weather"):
+            self._emit(self._clock_msg())
         self._flush(force=True)
         return {"type": "ack", "cmd": cmd, "ok": True}
 

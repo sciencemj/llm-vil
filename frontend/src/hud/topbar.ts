@@ -25,6 +25,8 @@ export class Topbar {
   private angle = el("button", { class: "btn", title: "카메라 60° 회전 (Q/E · 우클릭 드래그)" });
   private conn = el("span", { class: "conn", title: "서버 연결" });
   private assets = el("span", { class: "badge", title: "로드된 스프라이트" });
+  private limit = el("button", { class: "badge limit" });
+  private thinking = el("span", { class: "badge thinking", role: "status", "aria-live": "polite" });
 
   constructor(root: HTMLElement, private store: WorldStore, private camera: Camera, actions: TopbarActions) {
     this.play.addEventListener("click", () => actions.send({ cmd: store.clock.paused ? "resume" : "pause" }));
@@ -52,7 +54,9 @@ export class Topbar {
     root.append(
       this.conn, this.clock, this.weather, el("span", { class: "sep" }), this.play, step, speeds,
       el("span", { class: "sep" }), camGroup, this.replayBtn, save, god, llm, this.assets,
+      this.limit, this.thinking,
     );
+    this.limit.addEventListener("click", actions.toggleSaves);
   }
 
   private replayBtn = el("button", { class: "btn", title: "지난 장면 되감기·재생 (라이브는 계속 진행)" }, "🎞 리플레이");
@@ -74,5 +78,22 @@ export class Topbar {
     this.angle.textContent = `↻ ${Math.round(this.camera.angleDeg)}°`;
     this.conn.className = `conn ${conn}`;
     this.assets.textContent = `🧱 ${assetStats.real}/${assetStats.total}`;
+    const max = c.max_run_days ?? null;
+    const reached = !replaying && c.limit_reached === true;
+    this.limit.hidden = replaying;
+    this.limit.classList.toggle("reached", reached);
+    this.limit.textContent = reached
+      ? `⏰ ${max}일 한도 도달`
+      : max === null ? "한도: 무제한" : `한도: ${Math.floor(c.run_days_elapsed ?? 0)}/${max}일`;
+    this.limit.title = reached
+      ? `▶ 재생을 누르면 ${max}일 더 진행합니다`
+      : "이만큼 진행하면 자동으로 일시정지합니다 (클릭: 세이브 관리에서 변경)";
+    const n = replaying ? 0 : c.thinking_count ?? 0;
+    this.thinking.hidden = n <= 0;
+    if (n > 0) {
+      const names = (c.thinking_actors ?? []).map((id) => this.store.name_of(id)).join(", ");
+      this.thinking.textContent = `💭 생각 중 (${n}명)`;
+      this.thinking.title = `모두의 결정이 모이면 함께 움직입니다: ${names}`;
+    }
   }
 }

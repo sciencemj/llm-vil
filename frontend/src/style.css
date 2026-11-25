@@ -100,6 +100,13 @@ select, input[type="text"] { font-family: inherit; font-size: 13px; border: 2px 
 .stat .k { color: var(--muted); font-size: 11px; }
 .stat b { font-size: 15px; font-variant-numeric: tabular-nums; }
 .calls li { font-size: 12px; }
+.badge.limit { border: 0; color: var(--ink); cursor: pointer; font-family: inherit; }
+.badge.limit[hidden] { display: none; }
+.badge.limit.reached { background: #f6d2cd; color: #8e2b20; }
+.badge.thinking { background: #e8e2f6; color: #4b3b7a; animation: thinking-pulse 1.4s ease-in-out infinite; }
+.badge.thinking[hidden] { display: none; }
+@keyframes thinking-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .badge.thinking { animation: none; } }
 .badge.st-ok { background: #dcefd0; color: #2f5d1a; }
 .badge.st-repaired { background: #fbe7c6; color: #8a5208; }
 .badge.st-fallback { background: #f6d2cd; color: #8e2b20; }

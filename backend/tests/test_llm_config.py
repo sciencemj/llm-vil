@@ -212,7 +212,7 @@ async def test_switch_cancels_inflight_cognition_and_swaps_embedder(config):
     from llm_vil.schemas.world import AtomicAction
 
     old = Gated()
-    e = SimEngine(config, old, clock=CognitionClock(t_max_seconds=60.0))
+    e = SimEngine(config, old, barrier_mode=False, clock=CognitionClock(t_max_seconds=60.0))
     rt = SimRuntime(e, paused=True)
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "test")

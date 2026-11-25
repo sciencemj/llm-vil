@@ -91,6 +91,11 @@ class AreaDef(Frozen):
 class ClockConfig(Frozen):
     sim_minutes_per_real_second: float = 2.0
     t_max_seconds: float = 3.0
+    # live mode: hold the sim tick until every in-flight decision settles, then apply them
+    # all on one tick so villagers start moving together (bounded by the LLM timeout)
+    barrier_mode: bool = True
+    # live server: auto-pause after this many sim-days per run (None / 0 = unlimited)
+    max_run_days: int | None = Field(default=7, ge=0)
 
 
 class NeedsConfig(Frozen):
@@ -164,6 +169,27 @@ class MemoryConfig(Frozen):
     reflection_threshold: int = 120
     perception_cooldown: int = 60
     retrieve_k: int = 6
+    # hard caps on the in-memory (hot) stream, enforced daily. Evicted records move to the
+    # searchable archive, so a checkpoint stays the same size however long the village runs.
+    max_episodic: int = Field(default=200, ge=1)
+    max_salient: int = Field(default=40, ge=1)  # of those, older than hot_days
+    max_reflections: int = Field(default=40, ge=1)
+    max_summaries: int = Field(default=12, ge=1)
+    max_facts: int = Field(default=20, ge=1)
+    max_goals: int = Field(default=9, ge=1)
+
+    def permanent_cap(self, kind: str) -> int:
+        return {"reflection": self.max_reflections, "summary": self.max_summaries,
+                "fact": self.max_facts, "goal": self.max_goals}[kind]
+
+
+class StorageConfig(Frozen):
+    """Upper bounds for the SQLite save file (see ``SaveStore.maintain``)."""
+
+    max_auto_checkpoints: int = Field(default=10, ge=1)  # unlabeled saves only
+    max_tape_rows: int = Field(default=2000, ge=0)
+    max_events_rows: int = Field(default=20000, ge=0)
+    max_embed_cache_rows: int = Field(default=20000, ge=0)
 
 
 class ConversationConfig(Frozen):
@@ -194,6 +220,7 @@ class VillageConfig(Frozen):
     monsters: dict[str, MonsterDef] = Field(default_factory=dict)
     combat: CombatConfig = CombatConfig()
     shops: ShopConfig = ShopConfig()
+    storage: StorageConfig = StorageConfig()
     areas: list[AreaDef]
     objects: list[ObjectSpawn]
     villagers: list[AgentSpec]

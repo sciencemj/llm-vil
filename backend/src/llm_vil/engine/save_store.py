@@ -7,7 +7,9 @@ log, subject-indexed FTS5 memory archive, and the LLM ``tape``.
 from __future__ import annotations
 
 import json
+import logging
 import re
+import shutil
 import sqlite3
 from array import array
 from pathlib import Path
@@ -15,9 +17,17 @@ from typing import Any
 
 from ..llm.protocol import TapeEntry, dumps
 from ..schemas.agent import MemoryRecord
+from ..schemas.config import StorageConfig
 from ..schemas.world import WorldEvent
 
 SCHEMA_VERSION = 7
+AUTO_VACUUM_INCREMENTAL = 2
+CONVERT_MAX_BYTES = 256 * 1024 * 1024  # larger old saves are never rewritten automatically
+VACUUM_PAGES = 200         # pages released per incremental_vacuum step
+VACUUM_MAX_STEPS = 50      # bound the work done by one maintenance pass
+WAL_LIMIT_BYTES = 64 * 1024 * 1024
+
+log = logging.getLogger(__name__)
 
 
 def _migrate_v3(c: sqlite3.Connection) -> None:
@@ -125,10 +135,14 @@ class SaveStore:
         self.path = str(path)
         self.conn = sqlite3.connect(self.path, isolation_level=None)
         self.conn.execute("PRAGMA busy_timeout = 5000")
+        # must precede the first write (incl. the WAL switch): a no-op on an existing file
+        self.conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
         if self.path != ":memory:":
             self.conn.execute("PRAGMA journal_mode = WAL")
+            self.conn.execute(f"PRAGMA journal_size_limit = {WAL_LIMIT_BYTES}")
         self.conn.execute("PRAGMA synchronous = NORMAL")
         self._migrate()
+        self._ensure_auto_vacuum()
 
     # ------------------------------------------------------------ schema
     def _migrate(self) -> None:
@@ -149,6 +163,73 @@ class SaveStore:
             except Exception:
                 c.execute("ROLLBACK")
                 raise
+
+    def _pragma(self, name: str) -> int:
+        return int(self.conn.execute(f"PRAGMA {name}").fetchone()[0])
+
+    def _ensure_auto_vacuum(self) -> None:
+        """Saves created before auto_vacuum need one full VACUUM to switch. Only done for
+        small files with enough free disk; otherwise the save keeps working (freed pages are
+        reused, the file just does not shrink) and the manual command is logged."""
+        if self.path == ":memory:" or self._pragma("auto_vacuum") == AUTO_VACUUM_INCREMENTAL:
+            return
+        size = self._pragma("page_count") * self._pragma("page_size")
+        try:
+            free = shutil.disk_usage(Path(self.path).resolve().parent).free
+            if size <= CONVERT_MAX_BYTES and free > size * 3:
+                self.conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
+                self.conn.execute("VACUUM")
+                return
+        except (OSError, sqlite3.OperationalError) as exc:  # e.g. another open connection
+            log.warning("could not enable auto_vacuum on %s: %s", self.path, exc)
+            return
+        log.warning("%s (%d MB) predates auto_vacuum and will not shrink; run once while the "
+                    "server is stopped: sqlite3 %s 'PRAGMA auto_vacuum=INCREMENTAL; VACUUM;'",
+                    self.path, size // 1_000_000, self.path)
+
+    # ------------------------------------------------------------ bounded storage
+    def prune_auto_checkpoints(self, keep: int) -> int:
+        """Keep the newest ``keep`` unlabeled saves; labeled (manual) saves are never touched."""
+        ids = [r[0] for r in self.conn.execute(
+            "SELECT id FROM checkpoints WHERE label = '' ORDER BY id DESC LIMIT -1 OFFSET ?",
+            (max(1, keep),))]
+        for cid in ids:  # one transaction per (possibly huge) row keeps the WAL small
+            self.conn.execute("DELETE FROM checkpoints WHERE id = ? AND label = ''", (cid,))
+        return len(ids)
+
+    def prune_rows(self, *, max_tape: int, max_events: int, max_embed_cache: int) -> None:
+        """Cap the append-only logs. Events newer than the newest checkpoint always stay."""
+        c = self.conn
+        c.execute("DELETE FROM tape WHERE id <= COALESCE((SELECT id FROM tape"
+                  " ORDER BY id DESC LIMIT 1 OFFSET ?), -1)", (max_tape,))
+        c.execute("DELETE FROM events WHERE id <= COALESCE((SELECT id FROM events"
+                  " ORDER BY id DESC LIMIT 1 OFFSET ?), -1)"
+                  " AND tick <= COALESCE((SELECT tick FROM checkpoints"
+                  " ORDER BY id DESC LIMIT 1), -1)", (max_events,))
+        c.execute("DELETE FROM embed_cache WHERE rowid <= COALESCE((SELECT rowid FROM embed_cache"
+                  " ORDER BY rowid DESC LIMIT 1 OFFSET ?), -1)", (max_embed_cache,))
+
+    def incremental_vacuum(self) -> int:
+        """Return free pages to the filesystem in bounded steps; returns pages still free."""
+        free = self._pragma("freelist_count")
+        if self._pragma("auto_vacuum") != AUTO_VACUUM_INCREMENTAL:
+            return free
+        for _ in range(VACUUM_MAX_STEPS):
+            if not free:
+                break
+            # the pragma frees one page per fetched row: it must be drained
+            self.conn.execute(f"PRAGMA incremental_vacuum({VACUUM_PAGES})").fetchall()
+            before, free = free, self._pragma("freelist_count")
+            if free >= before:
+                break
+        return free
+
+    def maintain(self, limits: StorageConfig) -> None:
+        """Daily / per-checkpoint housekeeping: prune, then shrink the file."""
+        self.prune_auto_checkpoints(limits.max_auto_checkpoints)
+        self.prune_rows(max_tape=limits.max_tape_rows, max_events=limits.max_events_rows,
+                        max_embed_cache=limits.max_embed_cache_rows)
+        self.incremental_vacuum()
 
     def schema_version(self) -> int:
         return self.conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
@@ -241,6 +322,7 @@ class SaveStore:
         except Exception:
             c.execute("ROLLBACK")
             raise
+        self.incremental_vacuum()
 
     def load_checkpoint_id(self, checkpoint_id: int) -> tuple[int, dict[str, Any]]:
         row = self.conn.execute("SELECT tick, data FROM checkpoints WHERE id = ?",

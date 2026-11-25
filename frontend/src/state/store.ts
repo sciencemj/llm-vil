@@ -64,7 +64,8 @@ export class WorldStore {
 
   /** Sim tick predicted for "now" from the last clock message (capped extrapolation). */
   predictedTick(now: number): number {
-    if (this.clock.paused) return this.clock.tick;
+    // paused, or held at the decision barrier: the server tick is frozen, so don't run ahead
+    if (this.clock.paused || (this.clock.thinking_count ?? 0) > 0) return this.clock.tick;
     const tps = this.clock.speed * this.simMinutesPerSecond;
     return this.clock.tick + Math.min(((now - this.clockReceivedAt) / 1000) * tps, 1.5);
   }

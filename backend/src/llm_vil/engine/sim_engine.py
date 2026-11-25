@@ -66,6 +66,7 @@ class Job:
     started: float
     reason: str = ""
     session_id: str | None = None
+    timed_out: bool = False  # outlived the decision barrier: no longer blocks any tick
 
 
 PHASE2_METRICS = {
@@ -104,6 +105,8 @@ def _new_metrics() -> dict[str, int]:
         "herbs_gathered", "monsters_defeated", "fights_lost", "faints", "tools_repaired",
         "bounties_posted", "bounties_completed", "requests_posted", "requests_fulfilled",
         "drops_sold", "coin_supply", "coin_supply_max", "coin_gini_milli",
+        # decision barrier
+        "barrier_waits", "barrier_timeouts", "barrier_batches", "barrier_max_batch",
     )
     return {k: 0 for k in keys}
 
@@ -116,8 +119,18 @@ class SimEngine:
                  checkpoint_every_days: int | None = None,
                  retry_base_delay_s: float = 0.5, embedder: Embedder | None = None,
                  json_repair_retries: int = 2,
-                 pricing: Pricing | dict[str, Pricing] | None = None) -> None:
+                 pricing: Pricing | dict[str, Pricing] | None = None,
+                 barrier_mode: bool | None = None,
+                 barrier_timeout_s: float | None = None) -> None:
         self.config = config
+        # decision barrier (live mode only; deterministic headless runs already wait for all)
+        self.barrier_mode = config.clock.barrier_mode if barrier_mode is None else barrier_mode
+        self.barrier_timeout_s = 0.0
+        self.update_barrier_timeout(llm_timeout, json_repair_retries)
+        if barrier_timeout_s is not None:
+            self.barrier_timeout_s = barrier_timeout_s
+        self.barrier_slice_s = 0.1
+        self._barrier_since: float | None = None
         self.world = World(config)
         self.embedder: Embedder = embedder or HashingEmbedder()
         self.router = LLMRouter(llm, gate=SharedRateGate(max_concurrency), budget=budget,
@@ -132,6 +145,7 @@ class SimEngine:
             t_max_seconds=0.0,
         )
         self.store = store
+        self.storage = config.storage
         self.perceive_every = perceive_every
         self.checkpoint_every_days = checkpoint_every_days
         self.jobs: dict[str, Job] = {}
@@ -166,8 +180,70 @@ class SimEngine:
     async def run_days(self, days: float) -> None:
         await self.run_until(self.world.tick + int(days * self.config.ticks_per_day))
 
-    async def step(self) -> None:
+    @property
+    def barrier_active(self) -> bool:
+        return self.barrier_mode and not self.clock.deterministic
+
+    def update_barrier_timeout(self, llm_timeout: float, retries: int) -> None:
+        """Longest a tick may be held: one call with all its JSON-repair retries + slack."""
+        self.barrier_timeout_s = float(llm_timeout) * (int(retries) + 2)
+
+    def _blocking_jobs(self) -> list[Job]:
+        """Jobs the barrier still waits on (not finished, not given up on)."""
+        return [j for j in self.jobs.values() if not j.task.done() and not j.timed_out]
+
+    def reset_barrier(self) -> None:
+        """Forget a half-finished barrier wait (cancel / quiesce / restore)."""
+        self._barrier_since = None
+
+    @property
+    def thinking_actors(self) -> list[str]:
+        """Villagers whose decision the barrier is waiting on (finished or timed-out jobs
+        drop out, so the count shrinks 10 -> 9 -> ... while the tick is held)."""
+        return [aid for aid in self.order
+                if (j := self.jobs.get(aid)) is not None and not j.task.done()
+                and not j.timed_out]
+
+    async def _barrier(self) -> bool:
+        """Hold the tick until every in-flight decision settles (one short slice per call).
+
+        Returns True when the tick may advance. All settled decisions are then adopted in
+        deterministic actor order on this very tick, so their path moves / state deltas leave
+        in one batch. A job still running past ``barrier_timeout_s`` stops blocking the world
+        (it is adopted later, like in non-barrier mode), so the barrier can never deadlock.
+        """
+        pending = self._blocking_jobs()
+        if pending:
+            now = asyncio.get_running_loop().time()
+            if self._barrier_since is None:
+                self._barrier_since = now
+                self.metrics["barrier_waits"] += 1
+            if now - self._barrier_since < self.barrier_timeout_s:
+                await asyncio.wait([j.task for j in pending], timeout=self.barrier_slice_s)
+                if self._blocking_jobs():
+                    return False
+            else:
+                # give up on the hung call(s): they finish (and are adopted) whenever they
+                # do, but never hold another tick nor count as "thinking"
+                for j in pending:
+                    j.timed_out = True
+                self.metrics["barrier_timeouts"] += 1
+        self._barrier_since = None
+        done = sum(1 for j in self.jobs.values() if j.task.done())
+        if done:
+            self.metrics["barrier_batches"] += 1
+            self.metrics["barrier_max_batch"] = max(self.metrics["barrier_max_batch"], done)
+        self._cancelled = [t for t in self._cancelled if not t.done()]
+        self._harvest()
+        return True
+
+    async def step(self) -> bool:
+        """Advance one sim minute. Returns False when the decision barrier held the tick."""
         w = self.world
+        if self.barrier_active and self.jobs and not await self._barrier():
+            return False
+        if not self._blocking_jobs():
+            self._barrier_since = None
         events = w.tick_once()
         self._record(events)
         per_agent = self._route(events)
@@ -208,6 +284,7 @@ class SimEngine:
             self.checkpoint()
         await self.clock.pace(all(a.activity == "sleeping" for a in w.actors.values())
                               and not self.jobs)
+        return True
 
     async def _embed_pending(self) -> None:
         """Embed new memories of every villager in one off-loop batch (blocking embedders).
@@ -237,6 +314,7 @@ class SimEngine:
             await asyncio.wait(tasks)
             self._cancelled = [t for t in self._cancelled if not t.done()]
             self._harvest()
+        self.reset_barrier()
 
     # ================================================================ events
     def _record(self, events: list[WorldEvent]) -> None:
@@ -374,9 +452,19 @@ class SimEngine:
         self.metrics["cancelled_jobs"] += 1
         if requeue and job.kind in TRIGGER_PRIORITY:
             self._trigger(aid, job.kind, f"{job.reason}+cancelled")
+        if not self._blocking_jobs():
+            self.reset_barrier()  # the next wave gets a full timeout of its own
         return job.kind
 
     async def _settle(self) -> None:
+        if self.barrier_active:
+            # never adopt part of a tick's decisions: the barrier (next step) adopts them all
+            # together once every job has settled; instant answers are adopted right away
+            await asyncio.sleep(0)
+            if not self._blocking_jobs():
+                self._cancelled = [t for t in self._cancelled if not t.done()]
+                self._harvest()
+            return
         if self.jobs:
             tasks = [j.task for j in self.jobs.values()]
             if self.clock.must_wait([j.started for j in self.jobs.values()]):
@@ -537,6 +625,8 @@ class SimEngine:
             self.pending_archive.extend((rec, tick) for rec in archived)
             self.metrics["archived_memories"] += len(archived)
         self.flush()
+        if self.store is not None:
+            self.store.maintain(self.storage)
         n = self.checkpoint_every_days
         if n and self.store is not None and self.world.day % n == 0:
             self.checkpoint_pending = True  # written at the end of a quiescent step
@@ -800,6 +890,7 @@ class SimEngine:
     def load_snapshot(self, data: dict[str, Any]) -> None:
         if self.jobs or any(not t.done() for t in self._cancelled):
             raise RuntimeError("cannot load a snapshot while cognition is in flight")
+        self.reset_barrier()
         self._cancelled = []
         self.pending_events = []
         self.pending_archive = []
@@ -826,7 +917,9 @@ class SimEngine:
             raise RuntimeError("no SaveStore attached")
         self.flush()
         self.metrics["checkpoints"] += 1
-        return self.store.save_checkpoint(self.world.tick, dumps(self.snapshot()), label)
+        cid = self.store.save_checkpoint(self.world.tick, dumps(self.snapshot()), label)
+        self.store.maintain(self.storage)
+        return cid
 
     def fresh_snapshot(self) -> dict[str, Any]:
         """Snapshot of a brand-new village with this engine's config (for reset)."""

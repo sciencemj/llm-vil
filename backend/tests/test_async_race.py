@@ -11,7 +11,7 @@ from llm_vil.schemas.world import AtomicAction
 async def test_latency_race_dilates_clock_without_errors(config):
     llm = DemoBackend(simulated_latency_ms=40)
     clock = CognitionClock(speed=250.0, sim_minutes_per_real_second=2.0, t_max_seconds=0.02)
-    e = SimEngine(config, llm, clock=clock, max_concurrency=3)
+    e = SimEngine(config, llm, barrier_mode=False, clock=clock, max_concurrency=3)
     await e.run_until(config.start_minute + 8 * 60)  # 05:00 -> 13:00 with ~40ms cognition
     # interrupt in-flight intents with a God event while cognition is pending
     for _ in range(500):
@@ -57,7 +57,7 @@ class GatedLLM:
 
 async def test_stale_intent_is_dropped_and_requeued(config):
     llm = GatedLLM({"routine": "forage", "target": "bush_nw"})
-    e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=5.0))
+    e = SimEngine(config, llm, barrier_mode=False, clock=CognitionClock(t_max_seconds=5.0))
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "test")
     await asyncio.sleep(0)  # cognition is now in flight with a view of ripe bush_nw
@@ -73,7 +73,7 @@ async def test_stale_intent_is_dropped_and_requeued(config):
 
 async def test_fresh_intent_is_adopted(config):
     llm = GatedLLM({"routine": "forage", "target": "bush_nw"})
-    e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=5.0))
+    e = SimEngine(config, llm, barrier_mode=False, clock=CognitionClock(t_max_seconds=5.0))
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "test")
     llm.release.set()
@@ -86,7 +86,7 @@ async def test_fresh_intent_is_adopted(config):
 
 async def test_one_inflight_cognition_per_agent(config):
     llm = GatedLLM({"routine": "rest", "target": "home_mina"})
-    e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=5.0))
+    e = SimEngine(config, llm, barrier_mode=False, clock=CognitionClock(t_max_seconds=5.0))
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "first")
     first = e.jobs["mina"].task

@@ -179,7 +179,7 @@ async def test_commands_serialize_with_steps(config):
         jobs.append(rt.command({"cmd": "god_event", "text": f"사건 {i}"} if i % 3 == 0
                                else {"cmd": "god_weather", "weather": "rain"}))
     results = await asyncio.gather(*jobs)
-    assert all(r is None or r["ok"] for r in results)
+    assert all(isinstance(r, bool) or r["ok"] for r in results)  # bool = tick_once
     assert e.metrics["errors"] == 0 and e.metrics["god_events"] == 30
 
 

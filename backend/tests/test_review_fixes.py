@@ -123,8 +123,8 @@ async def test_automatic_checkpoint_with_awake_villagers_is_bit_identical(config
 async def test_pending_checkpoint_waits_for_quiescence(config, tmp_path):
     store = SaveStore(tmp_path / "p.sqlite")
     llm = GatedLLM({"routine": "rest", "target": "home_mina"})
-    e = SimEngine(config, llm, store=store, clock=CognitionClock(t_max_seconds=60.0),
-                  checkpoint_every_days=1)
+    e = SimEngine(config, llm, barrier_mode=False, store=store,
+                  clock=CognitionClock(t_max_seconds=60.0), checkpoint_every_days=1)
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "test")
     e.world.tick = DAY - 1
@@ -139,7 +139,7 @@ async def test_pending_checkpoint_waits_for_quiescence(config, tmp_path):
 # ---------------------------------------------------------------- 3. stale view & merchant
 async def test_stale_validation_covers_known_but_unseen_targets(config):
     llm = GatedLLM({"routine": "tend_farm", "target": "my_plots"})
-    e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=60.0))
+    e = SimEngine(config, llm, barrier_mode=False, clock=CognitionClock(t_max_seconds=60.0))
     e.world.apply("mina", AtomicAction(kind="wake"))
     view = e.world.perceive("mina")
     assert "plot_09" not in {o.id for o in view.objects}  # far outside perception radius
@@ -172,7 +172,7 @@ async def test_inject_event_cancels_cleanly_and_is_logged(config, tmp_path):
     llm = GatedLLM({"routine": "rest", "target": "home_mina"})
     fake_now = [100.0]
     clock = CognitionClock(t_max_seconds=60.0, time_fn=lambda: fake_now[0])
-    e = SimEngine(config, llm, store=store, clock=clock)
+    e = SimEngine(config, llm, barrier_mode=False, store=store, clock=clock)
     for aid in ("mina", "junho"):
         e.world.apply(aid, AtomicAction(kind="wake"))
     e.world.apply("junho", AtomicAction(kind="move_to", target_id="tree_05"))
@@ -384,7 +384,7 @@ def test_plan_block_requires_positive_span():
 
 async def test_load_snapshot_refuses_inflight_and_resets_buffers(config):
     llm = GatedLLM({"routine": "rest", "target": "home_mina"})
-    e = SimEngine(config, llm, clock=CognitionClock(t_max_seconds=60.0))
+    e = SimEngine(config, llm, barrier_mode=False, clock=CognitionClock(t_max_seconds=60.0))
     snap = SimEngine(config, DemoBackend()).snapshot()
     e.world.apply("mina", AtomicAction(kind="wake"))
     e._spawn("mina", "choose_routine", "x")

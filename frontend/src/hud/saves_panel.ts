@@ -1,4 +1,7 @@
+import type { Clock } from "../state/types";
 import { el, fmtClock, toast } from "./util";
+
+const DAY_LIMITS = [3, 7, 14, 30];
 
 interface Checkpoint {
   id: number;
@@ -54,7 +57,15 @@ export class SavesPanel {
   /** Called before a restore/reset so replay mode lets the fresh live snapshot through. */
   beforeRewind: () => Promise<void> = async () => {};
 
-  constructor(private root: HTMLElement, private clock: () => { day: number; minute: number }) {
+  private limit = el("select", { "aria-label": "최대 실행 일수" });
+  private limitInfo = el("div", { class: "hint" });
+
+  constructor(
+    private root: HTMLElement,
+    private clock: () => Clock,
+    private setMaxDays: (days: number) => void,
+  ) {
+    this.limit.addEventListener("change", () => this.setMaxDays(Number(this.limit.value)));
     const close = el("button", { class: "btn close", "aria-label": "닫기" }, "✕");
     close.addEventListener("click", () => this.toggle(false));
     const save = el("button", { class: "btn on" }, "💾 체크포인트 저장");
@@ -65,6 +76,9 @@ export class SavesPanel {
       close,
       el("h2", {}, "💾 세이브 관리"),
       this.info,
+      el("h3", {}, "실행 한도"),
+      el("div", { class: "row" }, this.limit),
+      this.limitInfo,
       el("h3", {}, "새 체크포인트"),
       el("div", { class: "row" }, this.label, save),
       this.result,
@@ -104,8 +118,27 @@ export class SavesPanel {
 
   private where = "";
 
+  /** Mirror the server's day limit (never while the user has the dropdown focused). */
+  private renderLimit(c: Clock): void {
+    const max = c.max_run_days ?? 0;
+    const days = DAY_LIMITS.includes(max) || max === 0 ? DAY_LIMITS : [...DAY_LIMITS, max].sort((a, b) => a - b);
+    const key = days.join(",");
+    if (this.limit.dataset.days !== key) {
+      this.limit.dataset.days = key;
+      this.limit.replaceChildren(
+        ...days.map((d) => el("option", { value: String(d) }, `${d}일`)),
+        el("option", { value: "0" }, "무제한"),
+      );
+    }
+    if (document.activeElement !== this.limit) this.limit.value = String(max);
+    this.limitInfo.textContent = c.limit_reached
+      ? `⏰ 한도에 도달해 멈췄어요. ▶ 재생을 누르면 ${max}일 더 진행해요`
+      : max === 0 ? "자동으로 멈추지 않아요" : `이번 실행 ${(c.run_days_elapsed ?? 0).toFixed(1)}일 / ${max}일 후 자동 일시정지`;
+  }
+
   private renderHeader(): void {
     const c = this.clock();
+    this.renderLimit(c);
     this.info.textContent = `현재 ${c.day + 1}일차 ${fmtClock(c.minute)}${this.where ? ` · ${this.where}` : ""}`;
   }
 

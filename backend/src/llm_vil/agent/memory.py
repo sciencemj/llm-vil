@@ -204,11 +204,15 @@ class MemoryStream:
 
     # ------------------------------------------------------------ archive
     def archive_old(self, now: int) -> list[MemoryRecord]:
-        """Move cold episodic records out of the hot stream (into ``pending_archive``).
+        """Move cold and over-cap records out of the hot stream (into ``pending_archive``).
 
-        Low-importance routine observations are first condensed into one permanent summary.
+        Low-importance routine observations are first condensed into one summary.
         """
-        cold = [r for r in self.records if not self.is_hot(r, now)]
+        # an expired cooldown has no effect any more: don't carry it in every checkpoint
+        self.cooldowns = {k: t for k, t in self.cooldowns.items()
+                          if now - t < self.config.perception_cooldown}
+        over = self._over_cap(now)
+        cold = [r for r in self.records if r.id in over or not self.is_hot(r, now)]
         if not cold:
             return []
         cold_ids = {r.id for r in cold}
@@ -224,6 +228,23 @@ class MemoryStream:
         self.pending_archive.extend(cold)
         self.archived_count += len(cold)
         return cold
+
+    def _over_cap(self, now: int) -> set[str]:
+        """Hot records beyond the per-kind caps. Oldest reflections/facts/goals/summaries and
+        oldest salient episodes go first; recent episodes leave by lowest importance."""
+        cfg = self.config
+        hot = [r for r in self.records if self.is_hot(r, now)]
+        out: set[str] = set()
+        for kind in PERMANENT_KINDS:
+            same = [r for r in hot if r.kind == kind]
+            out.update(r.id for r in same[:max(0, len(same) - cfg.permanent_cap(kind))])
+        episodic = [r for r in hot if r.kind not in PERMANENT_KINDS]
+        old = [r for r in episodic if now - r.tick > cfg.hot_days * self.ticks_per_day]
+        out.update(r.id for r in old[:max(0, len(old) - cfg.max_salient)])
+        rest = sorted((r for r in episodic if r.id not in out),
+                      key=lambda r: (r.importance, r.tick, r.id))
+        out.update(r.id for r in rest[:max(0, len(rest) - cfg.max_episodic)])
+        return out
 
     def set_embedder(self, embedder: Embedder) -> int:
         """Switch embedding model live. Records with other vectors are re-embedded: in one
@@ -263,7 +284,10 @@ class MemoryStream:
     # ------------------------------------------------------------ persistence
     def snapshot(self) -> dict[str, Any]:
         return {
-            "records": [r.model_dump(mode="json") for r in self.records],
+            # vectors are derived from ``text``: ``restore`` recomputes them (blocking
+            # embedders re-queue them and hit the store's embed_cache)
+            "records": [r.model_dump(mode="json", exclude={"embedding", "embed_model"},
+                                     exclude_defaults=True) for r in self.records],
             "next_seq": self.next_seq,
             "importance_accum": self.importance_accum,
             "cooldowns": dict(sorted(self.cooldowns.items())),

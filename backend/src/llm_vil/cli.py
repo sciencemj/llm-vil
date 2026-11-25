@@ -29,6 +29,7 @@ from .llm.config_store import (
     probe_profile,
     save_profile_and_key,
 )
+from .run_options import add_run_arguments, run_options
 
 DEFAULT_SAVE_PATH = Path(__file__).resolve().parents[2] / "saves" / "village.sqlite"
 
@@ -105,7 +106,10 @@ def cmd_serve(args: argparse.Namespace, paths: ConfigPaths) -> int:
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
         print(f"saving to {save_path} (use --memory-only for an ephemeral run)")
-    app = create_app(speed=args.speed, paused=args.paused, store_path=save_path,
+    options = run_options(args)
+    if options["paused"]:
+        print("starting paused: press ▶ 재생 in the app to run (or pass --autostart)")
+    app = create_app(speed=args.speed, store_path=save_path, **options,
                      fresh=args.fresh,
                      llm_profile=args.llm_profile, embed_profile=args.embed_profile,
                      llm_config_path=str(paths.base_yaml), env_file=str(paths.env_file))
@@ -145,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--host", default=os.environ.get("LLM_VIL_HOST", "127.0.0.1"))
     sv.add_argument("--port", type=int, default=int(os.environ.get("LLM_VIL_PORT", "8780")))
     sv.add_argument("--speed", type=float, default=1.0)
-    sv.add_argument("--paused", action="store_true")
+    add_run_arguments(sv)
     sv.add_argument("--save-path", default=os.environ.get("LLM_VIL_SAVE"),
                     help=f"SQLite save file (default: {DEFAULT_SAVE_PATH})")
     sv.add_argument("--memory-only", action="store_true",

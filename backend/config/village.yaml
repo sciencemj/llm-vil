@@ -13,6 +13,13 @@ perception_radius: 7
 clock:
   sim_minutes_per_real_second: 2.0
   t_max_seconds: 3.0
+  barrier_mode: true  # live: apply every villager's decision on the same tick
+  max_run_days: 7     # live: auto-pause after N sim-days per run (0 = unlimited)
+storage:              # bounds for the SQLite save file
+  max_auto_checkpoints: 10  # unlabeled daily saves; labeled (manual) saves are never pruned
+  max_tape_rows: 2000
+  max_events_rows: 20000
+  max_embed_cache_rows: 20000
 needs:
   hunger_per_min_awake: 0.045
   hunger_per_min_asleep: 0.015
@@ -67,6 +74,13 @@ memory:
   reflection_threshold: 120
   perception_cooldown: 60
   retrieve_k: 6
+  # hot-memory caps per villager; evicted records move to the searchable archive
+  max_episodic: 200
+  max_salient: 40
+  max_reflections: 40
+  max_summaries: 12
+  max_facts: 20
+  max_goals: 9
 conversation:
   max_turns: 6
   ticks_per_turn: 2

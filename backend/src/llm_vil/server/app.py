@@ -34,8 +34,9 @@ from ..llm.config_store import (
 )
 from ..llm.factory import LLMBundle, build_bundle
 from ..llm.protocol import LanguageModel
+from ..run_options import add_run_arguments, run_options
 from ..schemas.config import VillageConfig
-from .runtime import SimRuntime
+from .runtime import UNSET, SimRuntime
 
 log = logging.getLogger("llm_vil.server")
 
@@ -165,12 +166,17 @@ def embedder_reusable(old: LLMBundle, new: LLMBundle) -> bool:
 
 
 def create_app(config: VillageConfig | None = None, llm: LanguageModel | None = None, *,
-               speed: float = 1.0, paused: bool = False, store_path: str | None = None,
+               speed: float = 1.0, paused: bool = True, store_path: str | None = None,
                autostart: bool = True, t_max_seconds: float | None = None,
                llm_profile: str | None = None, embed_profile: str | None = None,
-               fresh: bool = False,
+               fresh: bool = False, max_run_days: int | None = UNSET,
+               max_checkpoints: int | None = None,
                llm_config_path: str | None = None, env_file: str | None = None) -> FastAPI:
     cfg = config or load_village()
+    if max_checkpoints is not None:
+        storage = cfg.storage.model_validate(
+            {**cfg.storage.model_dump(), "max_auto_checkpoints": max_checkpoints})
+        cfg = cfg.model_copy(update={"storage": storage})
     state: dict[str, Any] = {}
 
     @contextlib.asynccontextmanager
@@ -201,7 +207,7 @@ def create_app(config: VillageConfig | None = None, llm: LanguageModel | None = 
             engine = SimEngine(
                 cfg, bundle.llm, store=store, clock=clock,
                 checkpoint_every_days=1 if store else None, embedder=bundle.embedder,
-                pricing=bundle.pricing, max_concurrency=int(rtcfg.get("max_concurrency") or 4),
+                pricing=bundle.pricing, max_concurrency=bundle.max_concurrency,
                 llm_timeout=bundle.llm_timeout,  # profile timeout_s wins over the runtime default
                 retry_base_delay_s=float(rtcfg.get("retry_base_delay_s") or 0.5),
                 json_repair_retries=bundle.repair_retries, budget=bundle.token_budget(),
@@ -217,7 +223,8 @@ def create_app(config: VillageConfig | None = None, llm: LanguageModel | None = 
                     engine.load_snapshot(engine.fresh_snapshot())
                     # keep the old save points restorable, but never mix their log in
                     store.truncate_after(cfg.start_minute - 1, keep_checkpoints=True)
-            runtime = SimRuntime(engine, speed=speed, paused=paused)
+            runtime = SimRuntime(engine, speed=speed, paused=paused,
+                                 max_run_days=max_run_days)
             state["runtime"] = runtime
             state["bundle"] = bundle
             app.state.runtime = runtime  # read-only handles for tests / tooling
@@ -320,7 +327,8 @@ def create_app(config: VillageConfig | None = None, llm: LanguageModel | None = 
                     new.embedder.close()
                 raise fail(exc) from None
             await runtime.switch_llm(new.llm, new.embedder, pricing=new.pricing,
-                                     timeout=new.llm_timeout, retries=new.repair_retries)
+                                     timeout=new.llm_timeout, retries=new.repair_retries,
+                                     max_concurrency=new.max_concurrency)
             state["bundle"] = new
             return {"stats": llm_stats_payload(runtime, new), "config": summary()}
 
@@ -436,7 +444,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=int(os.environ.get("LLM_VIL_PORT",
                                                                        DEFAULT_PORT)))
     parser.add_argument("--speed", type=float, default=1.0)
-    parser.add_argument("--paused", action="store_true")
+    add_run_arguments(parser)
     parser.add_argument("--llm-profile", default=os.environ.get("LLM_VIL_PROFILE"),
                         help="profile name from config/llm.yaml (default: demo)")
     parser.add_argument("--embed-profile", default=os.environ.get("LLM_VIL_EMBED_PROFILE"),
@@ -450,7 +458,7 @@ def main() -> None:
 
     if args.save:
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-    app = create_app(speed=args.speed, paused=args.paused, store_path=args.save,
+    app = create_app(speed=args.speed, store_path=args.save, **run_options(args),
                      fresh=args.fresh, llm_profile=args.llm_profile,
                      embed_profile=args.embed_profile)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

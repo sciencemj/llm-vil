@@ -35,7 +35,11 @@ const socket = new SimSocket(
       return;
     }
     if (store.replaying) return; // 🎞 replay owns the view; re-synced on "라이브 복귀"
+    const wasLimited = store.clock.limit_reached === true;
     store.apply(msg);
+    if (!wasLimited && store.clock.limit_reached) {
+      toast(`⏰ 최대 실행 일수(${store.clock.max_run_days}일)에 도달해 자동 일시정지되었습니다`);
+    }
     if (msg.type === "snapshot") {
       god.syncVillagers();
       if (!centered) {
@@ -82,7 +86,7 @@ const god = new GodPanel(must("god"), store, {
 });
 const llmPanel = new LLMPanel(must("llm"), store);
 const replay = new ReplayBar(must("replay"), store);
-const savesPanel = new SavesPanel(must("saves"), () => store.clock);
+const savesPanel = new SavesPanel(must("saves"), () => store.clock, (days) => send({ cmd: "set_max_days", days }));
 savesPanel.beforeRewind = () => replay.exit(); // never hold a stale range across a rewind
 // inspector, LLM and saves share the right-hand slot: opening one closes the others
 llmPanel.onOpen = () => {

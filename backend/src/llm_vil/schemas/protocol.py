@@ -46,6 +46,11 @@ class ClockDelta(Frozen):
     speed: float | None
     dilated: bool = False
     fast_forward: bool = False
+    thinking_count: int = 0
+    thinking_actors: list[str] = Field(default_factory=list)
+    max_run_days: int | None = None  # None = unlimited
+    run_days_elapsed: float = 0.0
+    limit_reached: bool = False
 
 
 class GodEventDelta(Frozen):
