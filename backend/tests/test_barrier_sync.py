@@ -95,7 +95,10 @@ async def test_barrier_holds_tick_and_reports_thinking_actors(config):
         if not advanced:
             held = True
             assert e.world.tick == tick0 or e.thinking_actors  # frozen while thinking
-            assert e.thinking_actors == [a for a in e.order if a in e.jobs]
+            assert e.thinking_actors == [
+                a for a in e.order
+                if a in e.jobs and not e.jobs[a].task.done() and not e.jobs[a].timed_out
+            ]
             assert len(e.thinking_actors) >= 1
             break
         tick0 = e.world.tick
